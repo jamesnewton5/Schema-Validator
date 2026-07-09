@@ -1,4 +1,4 @@
-type CustomType = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | PrototypeSchema;
+type CustomType = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | PrototypeSchema | SchemaPropertyExtended;
 type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "function" | "object";
 
 interface SchemaProperty {
@@ -40,7 +40,7 @@ export class Schema {
     public optional: () => SchemaProperty;
     check: <T>(unknownVariable: unknown) => unknownVariable is T;
 
-    constructor(schemaSource: ObjectSchema | ArraySchema) {
+    constructor(schemaSource: ObjectSchema | ArraySchema | TupleSchema) {
         // Allow schema to be used as a type:
         this.optional = () => {
             return {
@@ -91,7 +91,19 @@ export class Schema {
     }
 
     public static arrayFromMap(keyType: CustomType, propertyType: CustomType) {
-        return this.extendSchemaProperty({ tupleOf: [keyType, propertyType] });
+        return { tupleOf: [keyType, propertyType] };
+    }
+
+    public static tuple(...args: Array<CustomType>) {
+        return { tupleOf: args };
+    }
+
+    public static array(...args: Array<CustomType>) {
+        if (args.length === 1) {
+            return { arrayOf: args[0] };
+        } else {
+            return { arrayOf: args };
+        }
     }
 }
 
@@ -115,6 +127,10 @@ const Util = {
         if (typeof customType === "string") return false;
         return "objectPrototype" in customType;
     },
+    isSchemaProperty: (customType: CustomType): customType is SchemaPropertyExtended => {
+        if (typeof customType === "string") return false;
+        return "propertyType" in customType;
+    },
     primitiveValidator: (unknownVariable: unknown, primitiveType: PrimitiveType): boolean => {
         if (primitiveType === "null") return (unknownVariable === null);
         return (typeof unknownVariable === primitiveType);
@@ -122,7 +138,7 @@ const Util = {
     getOptions: (objectSchema: ObjectSchema): SchemaOptions => {
         const options = objectSchema.options;
         if (options === undefined) {
-            objectSchema.options = PROPERTY_DEFAULTS;
+            return PROPERTY_DEFAULTS;
         } else {
             options.allowPartial = options.allowPartial ?? PROPERTY_DEFAULTS.allowPartial;
             options.allowExtensions = options.allowExtensions ?? PROPERTY_DEFAULTS.allowExtensions;
@@ -157,7 +173,10 @@ const Util = {
         let validator: ValidatorFunction;
         if (customType instanceof Schema) {
             validator = customType.check;
-        } if (Util.isArraySchema(customType)) {
+        } else if (Util.isSchemaProperty(customType)) {
+            const validator = Util.getValidator(customType.propertyType);
+            return (unknownVariable) => validator(unknownVariable);
+        } else if (Util.isArraySchema(customType)) {
             validator = Util.getArrayValidator(customType);
         } else if (Util.isTupleSchema(customType)) {
             validator = Util.getTupleValidator(customType);
@@ -171,7 +190,6 @@ const Util = {
         return validator;
     },
     getArrayValidator: (arraySchema: ArraySchema): ValidatorFunction => {
-        // Array
         const arrayOf = arraySchema.arrayOf;
         const validator = Util.getValidator(arrayOf);
         return (unknownVariable) => {
