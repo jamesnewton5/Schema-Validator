@@ -1,0 +1,24 @@
+{
+	"name": "@enz10/schema_validator",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Simple, lightweight, and zero dependency TypeScript schema validator.",
+	"keywords": [
+		"schema",
+		"validator",
+		"typescript",
+		"no",
+		"dependencies",
+		"zero",
+		"dependencies",
+		"zero",
+		"depenency"
+	],
+	"license": "ISC",
+	"author": "Enzio",
+	"type": "module",
+	"main": "index.ts",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	}
+}
