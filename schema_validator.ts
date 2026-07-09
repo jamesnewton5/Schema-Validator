@@ -1,157 +1,60 @@
-type CustomType = "string" | "number" | "boolean" | "undefined" | "null" | "function" | "object" | ObjectType | ArrayType | Schema;
-interface ObjectPropertyTypeFunction extends ObjectPropertyType {
-    optional: () => ObjectPropertyType
+type CustomType = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | PrototypeSchema;
+type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "function" | "object";
+
+interface SchemaProperty {
+    require?: boolean;
+    propertyType: CustomType | Array<CustomType>;
 };
-interface ObjectPropertyType {
-    require?: boolean,
-    propertyType: CustomType | Array<CustomType>
+interface SchemaPropertyExtended extends SchemaProperty {
+    optional: () => SchemaPropertyExtended;
 };
-type TypeOptions = {
+type Class<T> = new (...args: any[]) => T
+type PrototypeSchema = {
+    objectPrototype: Class<Object>
+};
+type TupleSchema = {
+    tupleOf: Array<CustomType | Array<CustomType>>;
+};
+type ArraySchema = {
+    arrayOf: CustomType | Array<CustomType>;
+};
+type SchemaOptions = {
     allowPartial: boolean;
     allowExtensions: boolean;
 };
-type TypeObject = {
-    [key: string]: ObjectPropertyType | Schema;
+type ObjectSchema = {
+    options?: Partial<SchemaOptions>,
+    properties: {
+        [key: string]: SchemaProperty | Schema;
+    }
 };
-type ArrayType = {
-    arrayOf: CustomType | Array<CustomType>
-};
-type ObjectType = {
-    options?: Partial<TypeOptions>,
-    properties: TypeObject
+
+type ValidatorFunction = (unknownVariable: unknown) => boolean;
+
+const PROPERTY_DEFAULTS: SchemaOptions = {
+    allowPartial: false,
+    allowExtensions: false
 };
 
 export class Schema {
-    private static PROPERTY_DEFAULTS: TypeOptions = {
-        allowPartial: false,
-        allowExtensions: false
-    };
-    private source: CustomType;
-    private propertyEntrySubArrays?: Array<[string, ObjectPropertyType]>
-    private propertyKeySet?: Set<string>;
-    public optional: () => ObjectPropertyType;
+    public optional: () => SchemaProperty;
+    check: <T>(unknownVariable: unknown) => unknownVariable is T;
 
-    check: (unknownVariable: any) => boolean;
-
-    constructor(reference: ObjectType | ArrayType) {
-        this.source = reference;
+    constructor(schemaSource: ObjectSchema | ArraySchema) {
         // Allow schema to be used as a type:
         this.optional = () => {
             return {
                 require: false,
-                propertyType: [this]
+                propertyType: this
             };
         }
 
-        if ("arrayOf" in reference && !Array.isArray((reference as ArrayType).arrayOf)) {
-            (reference as ArrayType).arrayOf = [((reference as ArrayType).arrayOf) as CustomType];
-        } else if ("properties" in reference) {
-            // Get options
-            const options = (reference as ObjectType).options;
-            if (options === undefined) (reference as ObjectType).options = Schema.PROPERTY_DEFAULTS;
-            else {
-                options.allowPartial = options.allowPartial ?? Schema.PROPERTY_DEFAULTS.allowPartial;
-                options.allowExtensions = options.allowExtensions ?? Schema.PROPERTY_DEFAULTS.allowExtensions;
-            }
-
-            // Create set during initialisation to avoid memory allocation while running
-            const properties = (reference as ObjectType).properties;
-            this.propertyKeySet = new Set(Object.keys(properties));
-
-            // Create all key-property pair subarrys during initialisation too
-            const propertyEntrySubArrays: Array<[string, ObjectPropertyType]> = [];
-            const propertyEntries = Object.entries(properties);
-
-            for (const subArray of propertyEntries) {
-                propertyEntrySubArrays.push(subArray as [string, ObjectPropertyType]);
-                const typeObject = subArray[1];
-                if (typeObject instanceof Schema) {
-                    subArray[1] = {
-                        require: true,
-                        propertyType: [typeObject]
-                    };
-                    continue;
-                }
-                const propertyType = typeObject.propertyType;
-                if (Array.isArray(propertyType)) continue;
-                typeObject.propertyType = [propertyType];
-            }
-            this.propertyEntrySubArrays = propertyEntrySubArrays;
-        }
-        this.check = (unknownVariable: any) => Schema.validateType(unknownVariable, this);
+        const validator = Util.getValidator(schemaSource);
+        this.check = <T>(unknownVariable: unknown): unknownVariable is T => validator(unknownVariable);
     }
 
-    private static validateType(unknownVariable: any, referenceType: CustomType): boolean {
-        if (referenceType instanceof Schema) {
-            var propertyKeySet = referenceType.propertyKeySet;
-            var propertyEntrySubArrays = referenceType.propertyEntrySubArrays;
-            referenceType = referenceType.source;
-        }
-        if (typeof referenceType === "string") {
-            // Primitive Types
-            if (referenceType === "null") return (unknownVariable === null);
-            return (typeof unknownVariable === referenceType);
-        } else if ("arrayOf" in referenceType) {
-            // Arrays
-            if (!Array.isArray(unknownVariable)) return false;
-            const typeArray = (referenceType as ArrayType).arrayOf as Array<CustomType>;
-            for (const unknownValue of unknownVariable) {
-                let typeIsValid = false;
-                for (const customType of typeArray) {
-                    if (!Schema.validateType(unknownValue, customType)) continue;
-                    typeIsValid = true;
-                    break;
-                }
-                if (!typeIsValid) return false;
-            }
-            return true;
-        }
-        // referenceType is typeof object:
-        if (typeof unknownVariable !== "object" || unknownVariable === null || propertyKeySet === undefined || propertyEntrySubArrays === undefined) return false;
-
-
-        const { allowPartial, allowExtensions } = (referenceType as ObjectType).options as TypeOptions;
-
-        let allPropertiesRequired = !allowPartial;
-        let allPropertiesPresent = true;
-
-        for (const subArray of propertyEntrySubArrays) {
-            const [propertyKey, typeObject] = subArray;
-            if (!typeObject.require) allPropertiesRequired = false;
-            // Object does not contain key: 
-            if (!(propertyKey in unknownVariable)) {
-                allPropertiesPresent = false;
-                if (typeObject.require === false || allowPartial) continue;
-                return false;
-            }
-
-            const unknownValue = unknownVariable[propertyKey];
-            let typeIsValid = false;
-
-            const propertyTypeArray = typeObject.propertyType as Array<CustomType>;
-            for (const propertyType of propertyTypeArray) {
-                if (!this.validateType(unknownValue, propertyType)) continue;
-                typeIsValid = true;
-                break;
-            }
-            if (!typeIsValid) return false;
-        }
-
-        // Don't need to verify no extra properties exist:
-        if (allowExtensions) return true;
-
-        // All properties already validated, 
-        if (allPropertiesRequired || allPropertiesPresent) return (Object.keys(unknownVariable).length === propertyKeySet.size);
-
-        // Check for extra properties
-        for (const key of Object.keys(unknownVariable)) {
-            if (!propertyKeySet.has(key)) return false;
-        }
-        return true;
-    }
-
-    private static getPropertyType(customType: CustomType): ObjectPropertyTypeFunction {
-        const propertyType: ObjectPropertyTypeFunction = {
+    private static extendSchemaProperty(customType: CustomType): SchemaPropertyExtended {
+        const propertyType: SchemaPropertyExtended = {
             require: true,
             propertyType: customType,
             optional: function () { this.require = false; return propertyType; }
@@ -160,31 +63,203 @@ export class Schema {
     }
 
     public static string() {
-        return this.getPropertyType("string");
+        return this.extendSchemaProperty("string");
     }
 
     public static number() {
-        return this.getPropertyType("number");
+        return this.extendSchemaProperty("number");
     }
 
     public static boolean() {
-        return this.getPropertyType("boolean");
+        return this.extendSchemaProperty("boolean");
     }
 
     public static undefined() {
-        return this.getPropertyType("undefined");
+        return this.extendSchemaProperty("undefined");
     }
 
     public static null() {
-        return this.getPropertyType("null");
+        return this.extendSchemaProperty("null");
     }
 
     public static function() {
-        return this.getPropertyType("function");
+        return this.extendSchemaProperty("function");
     }
 
-    public static object() {
-        return this.getPropertyType("object");
+    public static objectPrototype(object: PrototypeSchema["objectPrototype"]) {
+        return this.extendSchemaProperty({ objectPrototype: object });
+    }
+
+    public static arrayFromMap(keyType: CustomType, propertyType: CustomType) {
+        return this.extendSchemaProperty({ tupleOf: [keyType, propertyType] });
     }
 }
 
+const Util = {
+    isPrimitive: (customType: CustomType): customType is PrimitiveType => {
+        return (typeof customType === "string");
+    },
+    isArraySchema: (customType: CustomType): customType is ArraySchema => {
+        if (typeof customType === "string") return false;
+        return "arrayOf" in customType;
+    },
+    isTupleSchema: (customType: CustomType): customType is TupleSchema => {
+        if (typeof customType === "string") return false;
+        return "tupleOf" in customType;
+    },
+    isObjectSchema: (customType: CustomType): customType is ObjectSchema => {
+        if (typeof customType === "string") return false;
+        return "properties" in customType;
+    },
+    isPrototypeSchema: (customType: CustomType): customType is PrototypeSchema => {
+        if (typeof customType === "string") return false;
+        return "objectPrototype" in customType;
+    },
+    primitiveValidator: (unknownVariable: unknown, primitiveType: PrimitiveType): boolean => {
+        if (primitiveType === "null") return (unknownVariable === null);
+        return (typeof unknownVariable === primitiveType);
+    },
+    getOptions: (objectSchema: ObjectSchema): SchemaOptions => {
+        const options = objectSchema.options;
+        if (options === undefined) {
+            objectSchema.options = PROPERTY_DEFAULTS;
+        } else {
+            options.allowPartial = options.allowPartial ?? PROPERTY_DEFAULTS.allowPartial;
+            options.allowExtensions = options.allowExtensions ?? PROPERTY_DEFAULTS.allowExtensions;
+        }
+        return options as SchemaOptions;
+    },
+    getMultiTypeValidator: (customTypeArray: Array<CustomType>): ValidatorFunction => {
+        const validators: Array<ValidatorFunction> = [];
+        for (const singleCustomType of customTypeArray) {
+            validators.push(Util.getValidator(singleCustomType));
+        }
+        return (unknownVariable) => {
+            let isValid = false;
+            for (const validator of validators) {
+                if (!validator(unknownVariable)) continue;
+                isValid = true;
+                break;
+            }
+            return isValid;
+        }
+    },
+    getValidator: (customType: CustomType | Array<CustomType>): ValidatorFunction => {
+        if (Array.isArray(customType)) {
+            return Util.getMultiTypeValidator(customType);
+        }
+
+        if (Util.isPrimitive(customType)) {
+            const validator = Util.primitiveValidator;
+            return (unknownVariable) => validator(unknownVariable, customType);
+        }
+
+        let validator: ValidatorFunction;
+        if (customType instanceof Schema) {
+            validator = customType.check;
+        } if (Util.isArraySchema(customType)) {
+            validator = Util.getArrayValidator(customType);
+        } else if (Util.isTupleSchema(customType)) {
+            validator = Util.getTupleValidator(customType);
+        } else if (Util.isObjectSchema(customType)) {
+            validator = Util.getObjectValidator(customType);
+        } else if (Util.isPrototypeSchema(customType)) {
+            validator = Util.getPrototypeValidator(customType);
+        } else {
+            throw new Error("Could not get validator function");
+        }
+        return validator;
+    },
+    getArrayValidator: (arraySchema: ArraySchema): ValidatorFunction => {
+        // Array
+        const arrayOf = arraySchema.arrayOf;
+        const validator = Util.getValidator(arrayOf);
+        return (unknownVariable) => {
+            if (!Array.isArray(unknownVariable)) return false;
+            for (const unknownValue of unknownVariable) {
+                if (!validator(unknownValue)) return false;
+            }
+            return true;
+        }
+    },
+    getTupleValidator: (tupleSchema: TupleSchema): ValidatorFunction => {
+        const tupleOf = tupleSchema.tupleOf;
+        const length = tupleOf.length;
+        const validators: Array<ValidatorFunction> = [];
+        for (const customType of tupleOf) {
+            validators.push(Util.getValidator(customType));
+        }
+        return (unknownVariable) => {
+            if (!Array.isArray(unknownVariable)) return false;
+            for (const unknownValue of unknownVariable) {
+                if (!Array.isArray(unknownValue)) return false;
+                if (unknownValue.length !== length) return false;
+                for (let i = 0; i < unknownValue.length; i++) {
+                    const validator = validators[i];
+                    if (!validator(unknownValue[i])) return false;
+                }
+            }
+            return true;
+        }
+    },
+    getObjectValidator: (objectSchema: ObjectSchema): ValidatorFunction => {
+        const properties = objectSchema.properties;
+        const propertyKeySet: Set<string> = new Set(Object.keys(properties))
+        const propertyValidatorSubArrays: Array<[keyof typeof properties, ValidatorFunction, boolean]> = [];
+
+        const { allowPartial, allowExtensions } = Util.getOptions(objectSchema);
+        let allPropertiesRequired = !allowPartial;
+
+        for (const subArray of Object.entries(properties)) {
+            const schemaProperty = subArray[1];
+            let require: boolean;
+            let validator: ValidatorFunction;
+            if (schemaProperty instanceof Schema) {
+                validator = schemaProperty.check;
+                require = true;
+            } else {
+                validator = Util.getValidator(schemaProperty.propertyType);
+                require = schemaProperty.require ?? true;
+                if (!require) allPropertiesRequired = false;
+            }
+            propertyValidatorSubArrays.push([subArray[0], validator, require]);
+        }
+
+        return (unknownVariable) => {
+            if (typeof unknownVariable !== "object" || unknownVariable === null) return false;
+
+            let allPropertiesPresent = true;
+            for (const subArray of propertyValidatorSubArrays) {
+                const [propertyKey, validator, require] = subArray;
+                // Object does not contain key: 
+                if (!(propertyKey in unknownVariable)) {
+                    if (require === true && !allowPartial) return false;
+                    allPropertiesPresent = false;
+                    continue;
+                }
+                // Object contains key, validate property
+                const unknownValue = unknownVariable[(propertyKey as keyof typeof unknownVariable)];
+                if (!(validator(unknownValue))) return false;
+            }
+
+            // Don't need to verify no extra properties exist:
+            if (allowExtensions) return true;
+
+            // All properties already validated
+            if (allPropertiesRequired || allPropertiesPresent) return (Object.keys(unknownVariable).length === propertyKeySet.size);
+
+            // Check for extra properties
+            for (const key of Object.keys(unknownVariable)) {
+                if (!propertyKeySet.has(key)) return false;
+            }
+            return true;
+        }
+    },
+    getPrototypeValidator: (prototypeSchema: PrototypeSchema): ValidatorFunction => {
+        const objectPrototype = prototypeSchema.objectPrototype;
+        return (unknownVariable) => {
+            if (typeof unknownVariable !== "object" || unknownVariable === null) return false;
+            return (unknownVariable instanceof objectPrototype);
+        }
+    }
+}
