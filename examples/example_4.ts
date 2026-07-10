@@ -11,6 +11,16 @@ type Person = {
 type PeopleMap = Map<number, Person>;
 type PeopleMapAsArray = Array<[number, Person]>;
 
+const PersonSchema = new Schema({
+    properties: {
+        firstName: Schema.string(),
+        lastName: Schema.string()
+    }
+});
+const PeopleMapArraySchema = new Schema(Schema.arrayFromMap("number", PersonSchema));
+// Or use Schema.array(Schema.tuple()):
+// const PeopleMapArraySchema = new Schema(Schema.array(Schema.tuple("number", PersonSchema)));
+
 const peopleFromId: PeopleMap = new Map();
 peopleFromId.set(0, {
     firstName: "John",
@@ -37,16 +47,6 @@ function retrieveDataFromString(): PeopleMap | undefined {
     const mapAsString = storedData;
     try {
         const arrayFromMap = JSON.parse(mapAsString);
-        const PersonSchema = new Schema({
-            properties: {
-                firstName: Schema.string(),
-                lastName: Schema.string()
-            }
-        });
-        const PeopleMapArraySchema = new Schema(Schema.arrayFromMap("number", PersonSchema));
-        // Or use Schema.tuple():
-        // const PeopleMapArraySchema = new Schema(Schema.tuple("number", PersonSchema));
-
         if (!PeopleMapArraySchema.check<PeopleMapAsArray>(arrayFromMap)) return undefined;
 
         const peopleFromId = new Map(arrayFromMap);

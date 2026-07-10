@@ -33,7 +33,7 @@ const options: SchemaOptions = {
     allowExtensions: false // When set to false no extra properties are permitted
 };
 ```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Schema created with default options:</h3>
+<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Schema with Default Options:</h3>
 
 ```typescript
 const PersonSchema = new Schema({
@@ -44,7 +44,7 @@ const PersonSchema = new Schema({
     }
 });
 ```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Schema created with options specified:</h3>
+<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Options Specified:</h3>
 
 ```typescript
 const PersonSchema = new Schema({
@@ -59,7 +59,7 @@ const PersonSchema = new Schema({
 });
 ```
 
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Schema created with partial options:</h3>
+<h3 style="margin-bottom: 6px; padding-bottom: 0px;">One Option Specified:</h3>
 
 ```typescript
 const PersonSchema = new Schema({
@@ -113,6 +113,10 @@ new Schema(Schema.array(Schema.number()));
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Optional Method</h3>
 
 ```typescript
+type Person = {
+    firstName: string;
+    lastName?: string;
+};
 const PersonSchema = new Schema({
     properties: {
         firstName: Schema.string(),
@@ -120,16 +124,16 @@ const PersonSchema = new Schema({
     }
 });
 
-console.log(PersonSchema.check({
+console.log(PersonSchema.check<Person>({
     firstName: "John",
     lastName: "Glorp"
 })); // Output: true
 
-console.log(PersonSchema.check({
+console.log(PersonSchema.check<Person>({
     firstName: "John"
 })); // Output: true
 
-console.log(PersonSchema.check({
+console.log(PersonSchema.check<Person>({
     firstName: "John",
     lastName: 4
 })); // Output: false
@@ -137,14 +141,18 @@ console.log(PersonSchema.check({
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Array</h3>
 
 ```typescript
-const SingleTypeArraySchema = new Schema(Schema.array("number"));
-console.log(SingleTypeArraySchema.check([1, 2, 3, 4, 5])); // Output: true
-console.log(SingleTypeArraySchema.check([1, 2, 3, 4, "five"])); // Output: false
+type SingleTypeArray = Array<number>;
+type MultiTypeArray = Array<number | string>;
 
+const SingleTypeArraySchema = new Schema(Schema.array("number"));
 //          Schema method used to define primitive type  ↓ ↓ ↓  
 const MultiTypeArraySchema = new Schema(Schema.array(Schema.number(), "string"));
-console.log(MultiTypeArraySchema.check([1, 2, 3, 4, 5])); // Output: true
-console.log(MultiTypeArraySchema.check([1, 2, 3, 4, "five"])); // Output: true
+
+console.log(SingleTypeArraySchema.check<SingleTypeArray>([1, 2, 3, 4, 5])); // Output: true
+console.log(SingleTypeArraySchema.check<SingleTypeArray>([1, 2, 3, 4, "five"])); // Output: false
+
+console.log(MultiTypeArraySchema.check<MultiTypeArray>([1, 2, 3, 4, 5])); // Output: true
+console.log(MultiTypeArraySchema.check<MultiTypeArray>([1, 2, 3, 4, "five"])); // Output: true
 ```
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Tuple</h3>
 
@@ -154,20 +162,26 @@ const TupleSchema = new Schema(Schema.tuple(
     Vector3Schema
 ));
 
-console.log(TupleSchema.check([
-    ["abc", { x: 0, y: 0, z: 0 }],
-    ["def", { x: 0, y: 0, z: 0 }]
-])); // Output: true
+console.log(TupleSchema.check(["abc", { x: 0, y: 0, z: 0 }])); // Output: true
 
-console.log(TupleSchema.check([
-    ["abc", { x: 0, y: 0, z: 0 }],
-    ["def", { x: 0, y: 0, z: "zero" }]
-])); // Output: false
+console.log(TupleSchema.check(["def", { x: 0, y: 0, z: "zero" }])); // Output: false
 
-console.log(TupleSchema.check([
-    [{ x: 0, y: 0, z: 0 }, "abc"],
-    ["def", { x: 0, y: 0, z: 0 }]
-])); // Output: false
+console.log(TupleSchema.check([{ x: 0, y: 0, z: 0 }, "abc"])); // Output: false
+```
+<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Tuple with Optional Fields</h3>
+
+```typescript
+type Tuple = [string, number, number?];
+const TupleSchema = new Schema(Schema.tuple(
+    Schema.string(),
+    Schema.number(),
+    Schema.number().optional()
+));
+
+console.log(TupleSchema.check<Tuple>(["abc", 123, 123])); // Output: true
+console.log(TupleSchema.check<Tuple>(["abc", 123])); // Output: true
+console.log(TupleSchema.check<Tuple>(["abc", 123, "abc"])); // Output: false
+console.log(TupleSchema.check<Tuple>(["abc"])); // Output: false
 ```
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Array from Map</h3>
 
@@ -179,6 +193,16 @@ type Person = {
 };
 type PeopleMap = Map<number, Person>;
 type PeopleMapAsArray = Array<[number, Person]>;
+
+const PersonSchema = new Schema({
+    properties: {
+        firstName: Schema.string(),
+        lastName: Schema.string()
+    }
+});
+const PeopleMapArraySchema = new Schema(Schema.arrayFromMap("number", PersonSchema));
+// Or use Schema.array(Schema.tuple()):
+// const PeopleMapArraySchema = new Schema(Schema.array(Schema.tuple("number", PersonSchema)));
 
 const peopleFromId: PeopleMap = new Map();
 peopleFromId.set(0, {
@@ -205,17 +229,7 @@ function storePeopleAsString(mapToStore: PeopleMap): void {
 function retrieveDataFromString(): PeopleMap | undefined {
     const mapAsString = storedData;
     try {
-        const arrayFromMap = JSON.parse(mapAsString);
-        const PersonSchema = new Schema({
-            properties: {
-                firstName: Schema.string(),
-                lastName: Schema.string()
-            }
-        });
-        const PeopleMapArraySchema = new Schema(Schema.arrayFromMap("number", PersonSchema));
-        // Or use Schema.tuple():
-        // const PeopleMapArraySchema = new Schema(Schema.tuple("number", PersonSchema));
-        
+        const arrayFromMap = JSON.parse(mapAsString);       
         if (!PeopleMapArraySchema.check<PeopleMapAsArray>(arrayFromMap)) return undefined;
 
         const peopleFromId = new Map(arrayFromMap);

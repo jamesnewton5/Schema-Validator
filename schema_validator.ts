@@ -40,7 +40,7 @@ export class Schema {
     public optional: () => SchemaProperty;
     check: <T>(unknownVariable: unknown) => unknownVariable is T;
 
-    constructor(schemaSource: ObjectSchema | ArraySchema | TupleSchema) {
+    constructor(schemaSource: ObjectSchema | ArraySchema | TupleSchema | SchemaPropertyExtended) {
         // Allow schema to be used as a type:
         this.optional = () => {
             return {
@@ -91,7 +91,11 @@ export class Schema {
     }
 
     public static arrayFromMap(keyType: CustomType, propertyType: CustomType) {
-        return { tupleOf: [keyType, propertyType] };
+        return {
+            arrayOf: {
+                tupleOf: [keyType, propertyType]
+            }
+        };
     }
 
     public static tuple(...args: Array<CustomType>) {
@@ -204,18 +208,35 @@ const Util = {
         const tupleOf = tupleSchema.tupleOf;
         const length = tupleOf.length;
         const validators: Array<ValidatorFunction> = [];
-        for (const customType of tupleOf) {
-            validators.push(Util.getValidator(customType));
+
+        let allPropertiesRequired = true;
+        let lastOptionalVariableIndex = tupleOf.length;
+
+        for (let i = tupleOf.length - 1; i >= 0; i--) {
+            const customType = tupleOf[i];
+            validators.unshift(Util.getValidator(customType));
+            if (typeof customType === "string") continue;
+            if (!("require" in customType)) continue;
+            if (customType.require !== false) continue;
+            allPropertiesRequired = false;
+            if (lastOptionalVariableIndex - i > 1) throw new Error("Failed to create tuple - optional variables must be placed after required variables");
+            lastOptionalVariableIndex = i;
         }
+
         return (unknownVariable) => {
             if (!Array.isArray(unknownVariable)) return false;
-            for (const unknownValue of unknownVariable) {
-                if (!Array.isArray(unknownValue)) return false;
-                if (unknownValue.length !== length) return false;
-                for (let i = 0; i < unknownValue.length; i++) {
-                    const validator = validators[i];
-                    if (!validator(unknownValue[i])) return false;
+            const unknownVariableLength = unknownVariable.length;
+            if (allPropertiesRequired && unknownVariableLength !== length) return false;
+            else if (unknownVariableLength < lastOptionalVariableIndex) return false;
+
+            // Use the length property here so the JS engine can optimise and avoid the array bounds check each loop:
+            for (let i = 0; i < unknownVariable.length; i++) {
+                const validator = validators[i];
+                if (i >= lastOptionalVariableIndex && i >= unknownVariableLength) {
+                    // All variables from now on are optional, and none are present
+                    return true;
                 }
+                if (!validator(unknownVariable[i])) return false;
             }
             return true;
         }

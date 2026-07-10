@@ -2,7 +2,7 @@
 	"name": "@enz10/schema_validator",
 	"version": "1.0.0",
 	"private": true,
-	"description": "Simple, lightweight, and zero dependency TypeScript schema validator.",
+	"description": "Simple, lightweight, and zero dependency TypeScript-based JSON schema validator.",
 	"keywords": [
 		"schema",
 		"validator",
