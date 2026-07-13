@@ -166,9 +166,12 @@ console.log(PersonSchema.check<Person>({
 type SingleTypeArray = Array<number>;
 type MultiTypeArray = Array<number | string>;
 
-const SingleTypeArraySchema = new Schema(Schema.array("number"));
-//          Schema method used to define primitive type  ↓ ↓ ↓  
-const MultiTypeArraySchema = new Schema(Schema.array(Schema.number(), "string"));
+const SingleTypeArraySchema = new Schema(Schema.array(Schema.number()));
+
+const MultiTypeArraySchema = new Schema(
+    // Comma separated parameters for creating an array schema:
+    Schema.array(Schema.number(), Schema.string())
+);
 
 console.log(SingleTypeArraySchema.check<SingleTypeArray>([1, 2, 3, 4, 5])); // Output: true
 console.log(SingleTypeArraySchema.check<SingleTypeArray>([1, 2, 3, 4, "five"])); // Output: false
@@ -204,6 +207,49 @@ console.log(TupleSchema.check<Tuple>(["abc", 123, 123])); // Output: true
 console.log(TupleSchema.check<Tuple>(["abc", 123])); // Output: true
 console.log(TupleSchema.check<Tuple>(["abc", 123, "abc"])); // Output: false
 console.log(TupleSchema.check<Tuple>(["abc"])); // Output: false
+```
+<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Set</h3>
+
+```typescript
+// Comma separated parameters for creating array and set schemas:
+const SetSchema = new Schema(
+    Schema.set(Schema.number(), Schema.string())
+);
+const testArray = [1, 2, 3, 4, "five"];
+const testSet = new Set(testArray);
+console.log(SetSchema.check<NumberStringSet>(testSet)); // Output: true
+```
+<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Map</h3>
+
+```typescript
+// Single type allowed for map key,
+// array of types for map values:
+const MapSchema = new Schema(Schema.map(
+    Schema.string(),
+    [Schema.number(), Schema.string()]
+));
+
+const testArray: Array<[string, number | string]> = [
+    ["key1", 1],
+    ["key2", "string"]
+];
+const testMap = new Map(testArray);
+console.log(MapSchema.check(testMap)); // Output: true
+
+
+// Single type allowed for map key,
+// any type allowed for map values:
+const MapSchema2 = new Schema(Schema.map(
+    Schema.string(),
+    Schema.any()
+));
+
+const testArray2: Array<[string | number, any]> = [
+    ["key1", new Date()],
+    ["key2", undefined]
+];
+const testMap2 = new Map(testArray2);
+console.log(MapSchema2.check(testMap2)); // Output: true
 ```
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Object Prototype</h3>
 

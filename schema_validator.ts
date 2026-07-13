@@ -1,5 +1,5 @@
-type CustomType = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | PrototypeSchema | SchemaPropertyExtended;
-type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "function" | "object";
+type CustomType = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | MapSchema | SetSchema | PrototypeSchema | SchemaPropertyExtended;
+type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "function" | "object" | "any";
 
 interface SchemaProperty {
     require?: boolean;
@@ -12,11 +12,17 @@ type Class<T> = new (...args: any[]) => T
 type PrototypeSchema = {
     objectPrototype: Class<Object>
 };
+type ArraySchema = {
+    arrayOf: CustomType | Array<CustomType>;
+};
 type TupleSchema = {
     tupleOf: Array<CustomType | Array<CustomType>>;
 };
-type ArraySchema = {
-    arrayOf: CustomType | Array<CustomType>;
+type MapSchema = {
+    mapOf: TupleSchema;
+};
+type SetSchema = {
+    setOf: CustomType | Array<CustomType>;
 };
 type SchemaOptions = {
     allowPartial: boolean;
@@ -86,27 +92,47 @@ export class Schema {
         return this.extendSchemaProperty("function");
     }
 
+    public static any() {
+        return this.extendSchemaProperty("any");
+    }
+
     public static objectPrototype(object: PrototypeSchema["objectPrototype"]) {
         return this.extendSchemaProperty({ objectPrototype: object });
     }
 
-    public static arrayFromMap(keyType: CustomType, propertyType: CustomType) {
-        return {
+    public static arrayFromMap(keyType: CustomType, propertyType: CustomType | Array<CustomType>) {
+        return this.extendSchemaProperty({
             arrayOf: {
                 tupleOf: [keyType, propertyType]
             }
-        };
-    }
-
-    public static tuple(...args: Array<CustomType>) {
-        return { tupleOf: args };
+        });
     }
 
     public static array(...args: Array<CustomType>) {
         if (args.length === 1) {
-            return { arrayOf: args[0] };
+            return this.extendSchemaProperty({ arrayOf: args[0] });
         } else {
-            return { arrayOf: args };
+            return this.extendSchemaProperty({ arrayOf: args });
+        }
+    }
+
+    public static tuple(...args: Array<CustomType | Array<CustomType>>) {
+        return this.extendSchemaProperty({ tupleOf: args });
+    }
+
+    public static map(keyType: CustomType | Array<CustomType>, propertyType: CustomType | Array<CustomType>) {
+        return this.extendSchemaProperty({
+            mapOf: {
+                tupleOf: [keyType, propertyType]
+            }
+        });
+    }
+
+    public static set(...args: Array<CustomType>) {
+        if (args.length === 1) {
+            return this.extendSchemaProperty({ setOf: args[0] });
+        } else {
+            return this.extendSchemaProperty({ setOf: args });
         }
     }
 }
@@ -122,6 +148,14 @@ const Util = {
     isTupleSchema: (customType: CustomType): customType is TupleSchema => {
         if (typeof customType === "string") return false;
         return "tupleOf" in customType;
+    },
+    isMapSchema: (customType: CustomType): customType is MapSchema => {
+        if (typeof customType === "string") return false;
+        return "mapOf" in customType;
+    },
+    isSetSchema: (customType: CustomType): customType is SetSchema => {
+        if (typeof customType === "string") return false;
+        return "setOf" in customType;
     },
     isObjectSchema: (customType: CustomType): customType is ObjectSchema => {
         if (typeof customType === "string") return false;
@@ -170,8 +204,12 @@ const Util = {
         }
 
         if (Util.isPrimitive(customType)) {
-            const validator = Util.primitiveValidator;
-            return (unknownVariable) => validator(unknownVariable, customType);
+            if (customType !== "any") {
+                const validator = Util.primitiveValidator;
+                return (unknownVariable) => validator(unknownVariable, customType);
+            } else {
+                return () => true;
+            }
         }
 
         let validator: ValidatorFunction;
@@ -184,6 +222,10 @@ const Util = {
             validator = Util.getArrayValidator(customType);
         } else if (Util.isTupleSchema(customType)) {
             validator = Util.getTupleValidator(customType);
+        } else if (Util.isMapSchema(customType)) {
+            validator = Util.getMapValidator(customType);
+        } else if (Util.isSetSchema(customType)) {
+            validator = Util.getSetValidator(customType);
         } else if (Util.isObjectSchema(customType)) {
             validator = Util.getObjectValidator(customType);
         } else if (Util.isPrototypeSchema(customType)) {
@@ -237,6 +279,30 @@ const Util = {
                     return true;
                 }
                 if (!validator(unknownVariable[i])) return false;
+            }
+            return true;
+        }
+    },
+    getMapValidator: (mapSchema: MapSchema): ValidatorFunction => {
+        const tupleOf = mapSchema.mapOf.tupleOf;
+        const keyValidator = Util.getValidator(tupleOf[0]);
+        const valueValidator = Util.getValidator(tupleOf[1]);
+        return (unknownVariable) => {
+            if (!(unknownVariable instanceof Map)) return false;
+            for (const [unknownKey, unknownValue] of unknownVariable) {
+                if (!keyValidator(unknownKey)) return false;
+                if (!valueValidator(unknownValue)) return false;
+            }
+            return true;
+        }
+    },
+    getSetValidator: (setSchema: SetSchema): ValidatorFunction => {
+        const setOf = setSchema.setOf;
+        const validator = Util.getValidator(setOf);
+        return (unknownVariable) => {
+            if (!(unknownVariable instanceof Set)) return false;
+            for (const unknownValue of unknownVariable) {
+                if (!validator(unknownValue)) return false;
             }
             return true;
         }
