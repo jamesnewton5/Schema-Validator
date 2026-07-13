@@ -1,11 +1,38 @@
 <h1 style="margin-bottom: 12px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; color: #FFAAFF; border-bottom: none;">
-MY LOVELY SCHEMA VALIDATOR :)
+JSON / JavaScript Schema Validator
 </h1>
-<h2 style="margin-bottom: 8px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; border-bottom: none;">- Zero dependencies</h2>
-<h2 style="margin-bottom: 8px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; border-bottom: none;">- Simple to use</h2>
-<h2 style="margin-bottom: 8px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; border-bottom: none;">- Very fast</h2>
-<br>
-<hr>
+Installation:
+
+```
+npm install github:jamesnewton5/Schema-Validator
+```
+
+```
+git clone https://github.com/jamesnewton5/Schema-Validator
+```
+<h3 style="margin-bottom: 8px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; border-bottom: none;">- Zero dependencies</h3>
+<h3 style="margin-bottom: 8px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; border-bottom: none;">- Small file size (12 KB)</h3>
+<h3 style="margin-bottom: 8px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; border-bottom: none;">- Easy to setup</h3>
+<h3 style="margin-bottom: 8px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; border-bottom: none;">- Very fast</h3><br>
+
+# Example
+```typescript
+type Vector3 = {x: number, y: number, z: number};
+
+const Vector3Schema = new Schema({
+    properties: {
+        x: Schema.number(),
+        y: Schema.number(),
+        z: Schema.number()
+    }
+});
+
+function outputVector3(vector3: unknown) {         
+    const isVector3 = Vector3Schema.check<Vector3>(vector3);
+    if (!isVector3) return;
+    console.log(vector3.x, vector3.y, vector3.z);
+}
+```
 
 # Use Case - Type Validation
 
@@ -22,7 +49,6 @@ function outputVector3(vector3: any) {
     console.log(vector3.x, vector3.y, vector3.z);
 }
 ```
-<hr>
 
 # Basic Setup
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Default Options</h3>
@@ -80,7 +106,6 @@ const testData = {
 
 console.log(PersonSchema.check(testData)); // Output: true
 ```
-<hr>
 
 # Usage
 ### No type parameter (bad)
@@ -92,17 +117,16 @@ function outputVector3(vector3: unknown) {
 }
 ```
 ### With type parameter (good)
-```typescript
+```diff
 type Vector3 = {x: number, y: number, z: number};
 
 function outputVector3(vector3: unknown) {
-    //                                     ↓ ↓ ↓
-    const isVector3 = Vector3Schema.check<Vector3>(vector3);
++                                          ↓ ↓ ↓            
++   const isVector3 = Vector3Schema.check<Vector3>(vector3);
     if (!isVector3) return;
     console.log(vector3.x, vector3.y, vector3.z); // <--- No error
 }
 ```
-<hr>
 
 # Methods and Examples
 <p style="margin-bottom: 6px; padding-bottom: 0px;">Schema methods can be used in place of strings to define types:</p>
@@ -112,18 +136,16 @@ new Schema(Schema.array(Schema.number()));
 ```
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Optional Method</h3>
 
-```typescript
-type Person = {
-    firstName: string;
-    lastName?: string;
-};
+
+```diff
 const PersonSchema = new Schema({
     properties: {
         firstName: Schema.string(),
-        lastName: Schema.string().optional() // <---
++       lastName: Schema.string().optional()
     }
 });
-
+```
+```typescript
 console.log(PersonSchema.check<Person>({
     firstName: "John",
     lastName: "Glorp"
@@ -183,6 +205,29 @@ console.log(TupleSchema.check<Tuple>(["abc", 123])); // Output: true
 console.log(TupleSchema.check<Tuple>(["abc", 123, "abc"])); // Output: false
 console.log(TupleSchema.check<Tuple>(["abc"])); // Output: false
 ```
+<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Object Prototype</h3>
+
+```typescript
+const ObjectSchema = new Schema({
+    properties: {
+        map: Schema.objectPrototype(Map)
+    }
+});
+
+const array: Array<[string, number]> = [["abc", 123]];
+
+console.log(ObjectSchema.check({
+    map: new Map(array)
+})); // Output: true
+
+console.log(ObjectSchema.check({
+    map: new Set(array)
+})); // Output: false
+
+console.log(ObjectSchema.check({
+    map: array
+})); // Output: false
+```
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Array from Map</h3>
 
 ```typescript
@@ -239,27 +284,4 @@ function retrieveDataFromString(): PeopleMap | undefined {
         return undefined;
     }
 }
-```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Object Prototype</h3>
-
-```typescript
-const ObjectSchema = new Schema({
-    properties: {
-        map: Schema.objectPrototype(Map)
-    }
-});
-
-const array: Array<[string, number]> = [["abc", 123]];
-
-console.log(ObjectSchema.check({
-    map: new Map(array)
-})); // Output: true
-
-console.log(ObjectSchema.check({
-    map: new Set(array)
-})); // Output: false
-
-console.log(ObjectSchema.check({
-    map: array
-})); // Output: false
 ```
