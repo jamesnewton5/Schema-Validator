@@ -1,12 +1,12 @@
-type CustomType = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | MapSchema | SetSchema | PrototypeSchema | SchemaPropertyExtended;
-type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "function" | "object" | "any";
+type CustomType = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | MapSchema | SetSchema | PrototypeSchema | SchemaProperty;
+type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "object" | "any";
 
 interface SchemaProperty {
-    require?: boolean;
+    require: boolean;
     propertyType: CustomType | Array<CustomType>;
-};
-interface SchemaPropertyExtended extends SchemaProperty {
-    optional: () => SchemaPropertyExtended;
+    defaultValue: undefined;
+    optional: () => SchemaProperty;
+    default: (defaultValue: any) => SchemaProperty;
 };
 type Class<T> = new (...args: any[]) => T
 type PrototypeSchema = {
@@ -24,84 +24,92 @@ type MapSchema = {
 type SetSchema = {
     setOf: CustomType | Array<CustomType>;
 };
-type SchemaOptions = {
+type ObjectSchemaOptions = {
     allowPartial: boolean;
     allowExtensions: boolean;
 };
 type ObjectSchema = {
-    options?: Partial<SchemaOptions>,
+    options?: Partial<ObjectSchemaOptions>,
     properties: {
         [key: string]: SchemaProperty | Schema;
     }
 };
 
-type ValidatorFunction = (unknownVariable: unknown) => boolean;
+type ValidatorFunction = <T>(unknownVariable: unknown, object?: Record<string | number, any>, propertyKey?: string | number) => boolean | T;
 
-const PROPERTY_DEFAULTS: SchemaOptions = {
+const PROPERTY_DEFAULTS: ObjectSchemaOptions = {
     allowPartial: false,
     allowExtensions: false
 };
-
+const DEFAULT_VALUE_PLACEHOLDER = Symbol();
 export class Schema {
-    public optional: () => SchemaProperty;
+    public optional() { return {} as SchemaProperty };
+    public default(defaultValue: any) { return {} as SchemaProperty };;
+
     check: <T>(unknownVariable: unknown) => unknownVariable is T;
 
-    constructor(schemaSource: ObjectSchema | ArraySchema | TupleSchema | SchemaPropertyExtended) {
-        // Allow schema to be used as a type:
-        this.optional = () => {
-            return {
-                require: false,
-                propertyType: this
-            };
-        }
+    constructor(schemaSource: CustomType) {
+        let schemaProperty: Partial<SchemaProperty> = {};
 
         const validator = Util.getValidator(schemaSource);
         this.check = <T>(unknownVariable: unknown): unknownVariable is T => validator(unknownVariable);
-    }
 
-    private static extendSchemaProperty(customType: CustomType): SchemaPropertyExtended {
-        const propertyType: SchemaPropertyExtended = {
+        Object.assign(schemaProperty, {
             require: true,
-            propertyType: customType,
-            optional: function () { this.require = false; return propertyType; }
-        };
-        return propertyType;
+            propertyType: undefined,
+            defaultValue: DEFAULT_VALUE_PLACEHOLDER,
+            optional: function () {
+                // Optional and default variables are for schemas as object properties, remove the check method
+                this.check = undefined as unknown as ValidatorFunction;
+                const schemaPropertyClone = { ...this };
+                schemaPropertyClone.require = false;
+                return schemaPropertyClone as unknown as SchemaProperty;
+            },
+            default: function (defaultValue: any) {
+                // Optional and default variables are for schemas as object properties, remove the check method
+                this.check = undefined as unknown as ValidatorFunction;
+                const schemaPropertyClone = { ...this };
+                schemaPropertyClone.defaultValue = defaultValue;
+                return schemaPropertyClone as unknown as SchemaProperty;
+            },
+            check: validator
+        });
+        schemaProperty.propertyType = this;
+
+
+        return schemaProperty as Schema
     }
 
     public static string() {
-        return this.extendSchemaProperty("string");
+        return new Schema("string");
     }
 
     public static number() {
-        return this.extendSchemaProperty("number");
+        return new Schema("number");
     }
 
     public static boolean() {
-        return this.extendSchemaProperty("boolean");
+        return new Schema("boolean");
     }
 
     public static undefined() {
-        return this.extendSchemaProperty("undefined");
+        return new Schema("undefined");
     }
 
     public static null() {
-        return this.extendSchemaProperty("null");
-    }
-
-    public static function() {
-        return this.extendSchemaProperty("function");
+        return new Schema("null");
     }
 
     public static any() {
-        return this.extendSchemaProperty("any");
+        return new Schema("any");
     }
 
     public static objectPrototype(object: PrototypeSchema["objectPrototype"]) {
-        return this.extendSchemaProperty({ objectPrototype: object });
+        return new Schema({ objectPrototype: object });
     }
 
     public static arrayFromMap(keyType: CustomType, propertyType: CustomType | Array<CustomType>) {
-        return this.extendSchemaProperty({
+        return new Schema({
             arrayOf: {
                 tupleOf: [keyType, propertyType]
             }
@@ -110,18 +118,18 @@ export class Schema {
 
     public static array(...args: Array<CustomType>) {
         if (args.length === 1) {
-            return this.extendSchemaProperty({ arrayOf: args[0] });
+            return new Schema({ arrayOf: args[0] });
         } else {
-            return this.extendSchemaProperty({ arrayOf: args });
+            return new Schema({ arrayOf: args });
         }
     }
 
     public static tuple(...args: Array<CustomType | Array<CustomType>>) {
-        return this.extendSchemaProperty({ tupleOf: args });
+        return new Schema({ tupleOf: args });
     }
 
     public static map(keyType: CustomType | Array<CustomType>, propertyType: CustomType | Array<CustomType>) {
-        return this.extendSchemaProperty({
+        return new Schema({
             mapOf: {
                 tupleOf: [keyType, propertyType]
             }
@@ -130,9 +138,9 @@ export class Schema {
 
     public static set(...args: Array<CustomType>) {
         if (args.length === 1) {
-            return this.extendSchemaProperty({ setOf: args[0] });
+            return new Schema({ setOf: args[0] });
         } else {
-            return this.extendSchemaProperty({ setOf: args });
+            return new Schema({ setOf: args });
         }
     }
 }
@@ -165,15 +173,11 @@ const Util = {
         if (typeof customType === "string") return false;
         return "objectPrototype" in customType;
     },
-    isSchemaProperty: (customType: CustomType): customType is SchemaPropertyExtended => {
+    isSchemaProperty: (customType: CustomType): customType is SchemaProperty => {
         if (typeof customType === "string") return false;
         return "propertyType" in customType;
     },
-    primitiveValidator: (unknownVariable: unknown, primitiveType: PrimitiveType): boolean => {
-        if (primitiveType === "null") return (unknownVariable === null);
-        return (typeof unknownVariable === primitiveType);
-    },
-    getOptions: (objectSchema: ObjectSchema): SchemaOptions => {
+    getOptions: (objectSchema: ObjectSchema): ObjectSchemaOptions => {
         const options = objectSchema.options;
         if (options === undefined) {
             return PROPERTY_DEFAULTS;
@@ -181,21 +185,20 @@ const Util = {
             options.allowPartial = options.allowPartial ?? PROPERTY_DEFAULTS.allowPartial;
             options.allowExtensions = options.allowExtensions ?? PROPERTY_DEFAULTS.allowExtensions;
         }
-        return options as SchemaOptions;
+        return options as ObjectSchemaOptions;
     },
     getMultiTypeValidator: (customTypeArray: Array<CustomType>): ValidatorFunction => {
         const validators: Array<ValidatorFunction> = [];
         for (const singleCustomType of customTypeArray) {
             validators.push(Util.getValidator(singleCustomType));
         }
+        if (validators.length === 0) return () => false;
         return (unknownVariable) => {
-            let isValid = false;
             for (const validator of validators) {
                 if (!validator(unknownVariable)) continue;
-                isValid = true;
-                break;
+                return true;
             }
-            return isValid;
+            return false;
         }
     },
     getValidator: (customType: CustomType | Array<CustomType>): ValidatorFunction => {
@@ -234,6 +237,10 @@ const Util = {
             throw new Error("Could not get validator function");
         }
         return validator;
+    },
+    primitiveValidator: (unknownVariable: unknown, primitiveType: PrimitiveType): boolean => {
+        if (primitiveType === "null") return (unknownVariable === null);
+        return (typeof unknownVariable === primitiveType);
     },
     getArrayValidator: (arraySchema: ArraySchema): ValidatorFunction => {
         const arrayOf = arraySchema.arrayOf;
@@ -323,7 +330,18 @@ const Util = {
                 validator = schemaProperty.check;
                 require = true;
             } else {
-                validator = Util.getValidator(schemaProperty.propertyType);
+                const isValidFn = Util.getValidator(schemaProperty.propertyType);
+                const defaultValue = schemaProperty.defaultValue;
+                if (defaultValue === DEFAULT_VALUE_PLACEHOLDER) {
+                    validator = isValidFn;
+                } else {
+                    validator = ((unknownVariable: unknown, object: Record<string | number, any>, propertyKey: string | number) => {
+                        const isValid = isValidFn(unknownVariable);
+                        if (isValid) return true;
+                        object[propertyKey] = defaultValue;
+                        return true;
+                    }) as ValidatorFunction;
+                }
                 require = schemaProperty.require ?? true;
                 if (!require) allPropertiesRequired = false;
             }
@@ -344,7 +362,7 @@ const Util = {
                 }
                 // Object contains key, validate property
                 const unknownValue = unknownVariable[(propertyKey as keyof typeof unknownVariable)];
-                if (!(validator(unknownValue))) return false;
+                if (!(validator(unknownValue, unknownVariable, propertyKey))) return false;
             }
 
             // Don't need to verify no extra properties exist:
