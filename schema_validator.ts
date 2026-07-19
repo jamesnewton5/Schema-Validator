@@ -35,7 +35,7 @@ type ObjectSchema = {
     }
 };
 
-type ValidatorFunction = <T>(unknownVariable: unknown, object?: Record<string | number, any>, propertyKey?: string | number) => boolean | T;
+type ValidatorFunction = <T>(unknownVariable: unknown, object?: Record<string | number, any>, propertyKey?: string | number) => boolean;
 
 const PROPERTY_DEFAULTS: ObjectSchemaOptions = {
     allowPartial: false,
@@ -52,7 +52,10 @@ export class Schema {
         let schemaProperty: Partial<SchemaProperty> = {};
 
         const validator = Util.getValidator(schemaSource);
-        this.check = <T>(unknownVariable: unknown): unknownVariable is T => validator(unknownVariable);
+        this.check = <T>(unknownVariable: unknown): unknownVariable is T => {
+            const isValid = validator(unknownVariable);
+            return isValid;
+        }
 
         Object.assign(schemaProperty, {
             require: true,
@@ -330,7 +333,7 @@ const Util = {
                 validator = schemaProperty.check;
                 require = true;
             } else {
-                const isValidFn = Util.getValidator(schemaProperty.propertyType);
+                const isValidFn = Util.getValidator(schemaProperty);
                 const defaultValue = schemaProperty.defaultValue;
                 if (defaultValue === DEFAULT_VALUE_PLACEHOLDER) {
                     validator = isValidFn;
@@ -356,7 +359,10 @@ const Util = {
                 const [propertyKey, validator, require] = subArray;
                 // Object does not contain key: 
                 if (!(propertyKey in unknownVariable)) {
-                    if (require === true && !allowPartial) return false;
+                    if (require === true && !allowPartial) {
+                        if (!(validator(Symbol(), unknownVariable, propertyKey))) return false;
+
+                    }
                     allPropertiesPresent = false;
                     continue;
                 }
