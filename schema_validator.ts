@@ -4,7 +4,7 @@ type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "o
 interface SchemaExtended {
     require: boolean;
     source: SchemaSource | Array<SchemaSource>;
-    defaultValue: any;
+    [DEFAULT_VALUE_KEY]: any;
     optional: () => SchemaExtended;
     default: (defaultValue: any) => SchemaExtended;
     check: CheckFunction;
@@ -45,11 +45,12 @@ const PROPERTY_DEFAULTS: ObjectSchemaOptions = {
     allowExtensions: false
 };
 
+const DEFAULT_VALUE_KEY = Symbol();
 const DEFAULT_VALUE_PLACEHOLDER = Symbol();
 const DELETE_SYMBOL = Symbol();
 
 export class Schema {
-    public static debug = true;
+    public static debug = false;
 
     optional?: () => SchemaExtended
     default?: (defaultValue: any) => SchemaExtended
@@ -65,7 +66,7 @@ export class Schema {
         const schemaExtended: SchemaExtended = {
             require: true,
             source: thisSchema,
-            defaultValue: DEFAULT_VALUE_PLACEHOLDER,
+            [DEFAULT_VALUE_KEY]: DEFAULT_VALUE_PLACEHOLDER,
             optional: function () {
                 // Optional and default variables are for schemas used within other schemas, remove the check method
                 // this.check = undefined as unknown as CheckFunction;
@@ -77,7 +78,7 @@ export class Schema {
                 // Optional and default variables are for schemas used within other schemas, remove the check method
                 // this.check = undefined as unknown as CheckFunction;
                 const schemaPropertyClone = { ...this };
-                schemaPropertyClone.defaultValue = defaultValue;
+                schemaPropertyClone[DEFAULT_VALUE_KEY] = defaultValue;
                 return schemaPropertyClone as unknown as SchemaExtended;
             },
             check: validator
@@ -340,11 +341,11 @@ const Util = {
             const validator = Util.getValidator(propertySchema);
             const require = (("require" in propertySchema && !propertySchema.require) ? false : true);
             if (!require) allPropertiesRequired = false;
-            if (!("defaultValue" in propertySchema) || propertySchema.defaultValue === DEFAULT_VALUE_PLACEHOLDER) {
+            if (!(DEFAULT_VALUE_KEY in propertySchema) || propertySchema[DEFAULT_VALUE_KEY] === DEFAULT_VALUE_PLACEHOLDER) {
                 propertyValidatorSubArrays.push([subArray[0], validator, require]);
                 continue;
             } else {
-                const defaultValue = propertySchema.defaultValue;
+                const defaultValue = propertySchema[DEFAULT_VALUE_KEY];
                 const assignDefaultValueFnString = `${(defaultValue === DELETE_SYMBOL) ? "delete object[propertyKey];" : "object[propertyKey] = defaultValue;"}`;
 
                 const newValidator = ((unknownVariable: unknown, object: Record<string | number, any>, propertyKey: string | number) => {

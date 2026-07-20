@@ -17,7 +17,7 @@ const TestSchema = Schema.create({
         y: Schema.number(),
         z: Schema.number(),
         unwantedData: Schema.none().default(Schema.KEYWORD.delete).optional(),
-        otherData: Schema.union(Schema.boolean(), Schema.null()).default(null),
+        otherData: Schema.union(Schema.string(), Schema.null()).default(null)
     }
 });
 
@@ -25,8 +25,7 @@ const testData = {
     x: 0,
     y: 0,
     z: -1,
-    unwantedData: "Hello :)",
-    otherData: undefined
+    unwantedData: "Hello :)"
 } as unknown;
 
 outputObject(testData);
