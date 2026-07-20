@@ -3,7 +3,7 @@ import { Schema } from "../schema_validator";
 type NumberStringSet = Set<number | string>;
 
 // Comma separated parameters for creating array and set schemas:
-const SetSchema = new Schema(Schema.set(Schema.number(), Schema.string()));
+const SetSchema = Schema.create(Schema.set(Schema.number(), Schema.string()));
 const testSet = new Set([1, 2, 3, 4, "five"]);
 console.log(SetSchema.check<NumberStringSet>(testSet)); // Output: true
 
@@ -11,7 +11,7 @@ console.log(SetSchema.check<NumberStringSet>(testSet)); // Output: true
 
 // Single type allowed for map key,
 // array of types for map values:
-const MapSchema = new Schema(Schema.map(
+const MapSchema = Schema.create(Schema.map(
     Schema.string(),
     [Schema.number(), Schema.string()]
 ));
@@ -27,7 +27,7 @@ console.log(MapSchema.check(testMap)); // Output: true
 
 // Single type allowed for map key,
 // any type allowed for map values:
-const MapSchema2 = new Schema(Schema.map(
+const MapSchema2 = Schema.create(Schema.map(
     Schema.string(),
     Schema.any()
 ));

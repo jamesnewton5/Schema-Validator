@@ -1,23 +1,40 @@
 import { Schema } from "../schema_validator";
 
-type Vector3 = { x: number, y: number, z: number };
-const Vector3Schema = new Schema({
+type TestObjectType = {
+    x: number,
+    y: number,
+    z: number,
+    otherData: boolean | null
+};
+
+const TestSchema = Schema.create({
+    options: {
+        allowPartial: false,
+        allowExtensions: false
+    },
     properties: {
         x: Schema.number(),
         y: Schema.number(),
-        z: Schema.number().default(0)
+        z: Schema.number(),
+        unwantedData: Schema.none().default(Schema.KEYWORD.delete).optional(),
+        otherData: Schema.union(Schema.boolean(), Schema.null()).default(null),
     }
 });
 
 const testData = {
     x: 0,
     y: 0,
-    z: "A"
+    z: -1,
+    unwantedData: "Hello :)",
+    otherData: undefined
 } as unknown;
-outputVector3(testData);
 
-function outputVector3(vector3: unknown) {
-    const isVector3 = Vector3Schema.check<Vector3>(vector3);
-    if (!isVector3) return;
-    console.log(vector3.x, vector3.y, vector3.z); // <--- No error
+outputObject(testData);
+
+function outputObject(object: unknown) {
+    const isValid = TestSchema.check<TestObjectType>(object);
+    if (!isValid) return;
+
+    // Output: 0 0 -1 null
+    console.log(...Object.values(object));
 }

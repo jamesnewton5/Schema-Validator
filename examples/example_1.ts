@@ -1,7 +1,7 @@
 import { Schema } from "../schema_validator";
 
 type Vector3 = { x: number, y: number, z: number };
-const Vector3Schema = new Schema({
+const Vector3Schema = Schema.create({
     properties: {
         x: Schema.number(),
         y: Schema.number(),

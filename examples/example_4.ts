@@ -11,15 +11,15 @@ type Person = {
 type PeopleMap = Map<number, Person>;
 type PeopleMapAsArray = Array<[number, Person]>;
 
-const PersonSchema = new Schema({
+const PersonSchema = Schema.create({
     properties: {
         firstName: Schema.string(),
         lastName: Schema.string()
     }
 });
-const PeopleMapArraySchema = new Schema(Schema.arrayFromMap("number", PersonSchema));
+const PeopleMapArraySchema = Schema.create(Schema.arrayFromMap("number", PersonSchema));
 // Or use Schema.array(Schema.tuple()):
-// const PeopleMapArraySchema = new Schema(Schema.array(Schema.tuple("number", PersonSchema)));
+// const PeopleMapArraySchema = Schema.create(Schema.array(Schema.tuple("number", PersonSchema)));
 
 const peopleFromId: PeopleMap = new Map();
 peopleFromId.set(0, {

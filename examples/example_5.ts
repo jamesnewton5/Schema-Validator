@@ -1,6 +1,6 @@
 import { Schema } from "../schema_validator";
 
-const ObjectSchema = new Schema({
+const ObjectSchema = Schema.create({
     properties: {
         map: Schema.objectPrototype(Map)
     }

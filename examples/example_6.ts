@@ -1,7 +1,7 @@
 import { Schema } from "../schema_validator";
 
 type Tuple = [string, number, number?];
-const TupleSchema = new Schema(Schema.tuple(
+const TupleSchema = Schema.create(Schema.tuple(
     Schema.string(),
     Schema.number(),
     Schema.number().optional()

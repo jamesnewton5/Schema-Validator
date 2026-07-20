@@ -19,7 +19,7 @@ git clone https://github.com/jamesnewton5/Schema-Validator
 ```typescript
 type Vector3 = {x: number, y: number, z: number};
 
-const Vector3Schema = new Schema({
+const Vector3Schema = Schema.create({
     properties: {
         x: Schema.number(),
         y: Schema.number(),
@@ -62,7 +62,7 @@ const options: SchemaOptions = {
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Schema with Default Options:</h3>
 
 ```typescript
-const PersonSchema = new Schema({
+const PersonSchema = Schema.create({
     // (No options property)
     properties: {
         firstName: Schema.string(),
@@ -73,7 +73,7 @@ const PersonSchema = new Schema({
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Options Specified:</h3>
 
 ```typescript
-const PersonSchema = new Schema({
+const PersonSchema = Schema.create({
     options: {
         allowPartial: false,
         allowExtensions: true
@@ -88,7 +88,7 @@ const PersonSchema = new Schema({
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">One Option Specified:</h3>
 
 ```typescript
-const PersonSchema = new Schema({
+const PersonSchema = Schema.create({
     options: {
         allowExtensions: true // Changed to true, allowPartial will resort to the default value (false)
     },
@@ -132,13 +132,13 @@ function outputVector3(vector3: unknown) {
 <p style="margin-bottom: 6px; padding-bottom: 0px;">Schema methods can be used in place of strings to define types:</p>
 
 ```typescript
-new Schema(Schema.array(Schema.number()));
+Schema.create(Schema.array(Schema.number()));
 ```
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Optional Method</h3>
 
 
 ```diff
-const PersonSchema = new Schema({
+const PersonSchema = Schema.create({
     properties: {
         firstName: Schema.string(),
 +       lastName: Schema.string().optional()
@@ -166,9 +166,9 @@ console.log(PersonSchema.check<Person>({
 type SingleTypeArray = Array<number>;
 type MultiTypeArray = Array<number | string>;
 
-const SingleTypeArraySchema = new Schema(Schema.array(Schema.number()));
+const SingleTypeArraySchema = Schema.create(Schema.array(Schema.number()));
 
-const MultiTypeArraySchema = new Schema(
+const MultiTypeArraySchema = Schema.create(
     // Comma separated parameters for creating an array schema:
     Schema.array(Schema.number(), Schema.string())
 );
@@ -182,7 +182,7 @@ console.log(MultiTypeArraySchema.check<MultiTypeArray>([1, 2, 3, 4, "five"])); /
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Tuple</h3>
 
 ```typescript
-const TupleSchema = new Schema(Schema.tuple(
+const TupleSchema = Schema.create(Schema.tuple(
     Schema.string(),
     Vector3Schema
 ));
@@ -197,7 +197,7 @@ console.log(TupleSchema.check([{ x: 0, y: 0, z: 0 }, "abc"])); // Output: false
 
 ```typescript
 type Tuple = [string, number, number?];
-const TupleSchema = new Schema(Schema.tuple(
+const TupleSchema = Schema.create(Schema.tuple(
     Schema.string(),
     Schema.number(),
     Schema.number().optional()
@@ -212,7 +212,7 @@ console.log(TupleSchema.check<Tuple>(["abc"])); // Output: false
 
 ```typescript
 // Comma separated parameters for creating array and set schemas:
-const SetSchema = new Schema(
+const SetSchema = Schema.create(
     Schema.set(Schema.number(), Schema.string())
 );
 const testArray = [1, 2, 3, 4, "five"];
@@ -224,7 +224,7 @@ console.log(SetSchema.check<NumberStringSet>(testSet)); // Output: true
 ```typescript
 // Single type allowed for map key,
 // array of types for map values:
-const MapSchema = new Schema(Schema.map(
+const MapSchema = Schema.create(Schema.map(
     Schema.string(),
     [Schema.number(), Schema.string()]
 ));
@@ -239,7 +239,7 @@ console.log(MapSchema.check(testMap)); // Output: true
 
 // Single type allowed for map key,
 // any type allowed for map values:
-const MapSchema2 = new Schema(Schema.map(
+const MapSchema2 = Schema.create(Schema.map(
     Schema.string(),
     Schema.any()
 ));
@@ -254,7 +254,7 @@ console.log(MapSchema2.check(testMap2)); // Output: true
 <h3 style="margin-bottom: 6px; padding-bottom: 0px;">Object Prototype</h3>
 
 ```typescript
-const ObjectSchema = new Schema({
+const ObjectSchema = Schema.create({
     properties: {
         map: Schema.objectPrototype(Map)
     }
@@ -285,15 +285,15 @@ type Person = {
 type PeopleMap = Map<number, Person>;
 type PeopleMapAsArray = Array<[number, Person]>;
 
-const PersonSchema = new Schema({
+const PersonSchema = Schema.create({
     properties: {
         firstName: Schema.string(),
         lastName: Schema.string()
     }
 });
-const PeopleMapArraySchema = new Schema(Schema.arrayFromMap("number", PersonSchema));
+const PeopleMapArraySchema = Schema.create(Schema.arrayFromMap("number", PersonSchema));
 // Or use Schema.array(Schema.tuple()):
-// const PeopleMapArraySchema = new Schema(Schema.array(Schema.tuple("number", PersonSchema)));
+// const PeopleMapArraySchema = Schema.create(Schema.array(Schema.tuple("number", PersonSchema)));
 
 const peopleFromId: PeopleMap = new Map();
 peopleFromId.set(0, {

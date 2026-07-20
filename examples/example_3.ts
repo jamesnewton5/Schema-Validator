@@ -1,6 +1,6 @@
 import { Schema } from "../schema_validator";
 
-const Vector3Schema = new Schema({
+const Vector3Schema = Schema.create({
     properties: {
         x: Schema.number(),
         y: Schema.number(),
@@ -8,7 +8,7 @@ const Vector3Schema = new Schema({
     }
 });
 
-const TupleSchema = new Schema(Schema.tuple(
+const TupleSchema = Schema.create(Schema.tuple(
     Schema.string(),
     Vector3Schema
 ));
