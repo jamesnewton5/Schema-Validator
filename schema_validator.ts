@@ -163,18 +163,26 @@ const Util = {
         if (!Schema.debug) return;
         console.log(`${failed ? "Invalid: " : ""} ${message}`);
     },
-    deepClone: (unknownVariable: unknown): typeof unknownVariable => {
+    deepClone: (unknownVariable: any): typeof unknownVariable => {
         if (typeof unknownVariable !== "object" || unknownVariable === null) return unknownVariable;
-
-        const clone = Object.create(Object.getPrototypeOf(unknownVariable));
+        if (typeof unknownVariable === "function") return unknownVariable;
+        let clone = new unknownVariable.constructor();
         let propertyArray: Array<any> | Set<any>;
         let index = 0;
 
         let setNewValue: Function;
-        if (!(unknownVariable instanceof Map)) {
-            setNewValue = (propertyKey: keyof typeof clone, value: any) => { clone[propertyKey] = Util.deepClone(value); }
+        if (unknownVariable instanceof Set) {
+            setNewValue = (propertyKey: keyof typeof clone, value: any) => {
+                clone.add(Util.deepClone(value));
+            }
+        } else if (unknownVariable instanceof Map) {
+            setNewValue = (propertyKey: keyof typeof clone, value: any) => {
+                clone.set(propertyKey, Util.deepClone(value));
+            }
         } else {
-            setNewValue = (propertyKey: keyof typeof clone, value: any) => { clone.set(propertyKey, Util.deepClone(value)); }
+            setNewValue = (propertyKey: keyof typeof clone, value: any) => {
+                clone[propertyKey] = Util.deepClone(value);
+            }
         }
 
         if (Array.isArray(unknownVariable) || unknownVariable instanceof Set) {
