@@ -94,6 +94,14 @@ export class Schema {
             Util.getValidator(args.map((source) => Schema.create(source)))
         ) as CheckFunction;
         const schemaExtended = Schema.getExtendedSchema(schema, validator);
+
+        for (const schemaSource of args) {
+            if (schemaSource === "none") {
+                schemaExtended.require = false;
+                break;
+            }
+        }
+
         return schemaExtended;
     }
     public static union = this.create;
@@ -150,12 +158,66 @@ export class Schema {
     }
 }
 
-function printDebug(message: string, failed?: boolean) {
-    if (!Schema.debug) return;
-    console.log(`${failed ? "Invalid: " : ""} ${message}`);
-}
-
 const Util = {
+    printDebug: (message: string, failed?: boolean) => {
+        if (!Schema.debug) return;
+        console.log(`${failed ? "Invalid: " : ""} ${message}`);
+    },
+    deepClone: (unknownVariable: unknown): typeof unknownVariable => {
+        if (typeof unknownVariable !== "object" || unknownVariable === null) return unknownVariable;
+
+        let propertyArray;
+        let variableExpression;
+        let variablePropertyExpression;
+        let keyExpression;
+        let setNewValueExpression;
+        let isSetOrArray;
+
+        if (Array.isArray(unknownVariable) || unknownVariable instanceof Set) {
+            isSetOrArray = true;
+            propertyArray = unknownVariable;
+            variableExpression = "entry";
+            variablePropertyExpression = "";
+            keyExpression = "index";
+        } else {
+            isSetOrArray = false;
+            variableExpression = "[...entry]";
+            variablePropertyExpression = "[1]";
+            keyExpression = "entry[0]";
+
+            if (!(Symbol.iterator in unknownVariable)) {
+                propertyArray = Object.entries(unknownVariable);
+            } else {
+                const iterator = unknownVariable[Symbol.iterator];
+                if (typeof iterator !== "function") {
+                    return Util.deepClone(iterator);
+                }
+                if (!("toArray" in iterator)) {
+                    propertyArray = unknownVariable;
+                } else {
+                    propertyArray = iterator().toArray();
+                }
+            }
+        }
+
+        if (!(unknownVariable instanceof Map)) {
+            setNewValueExpression = "clone[propertyKey] = Util.deepClone(value);";
+        } else {
+            setNewValueExpression = "clone.set(propertyKey, Util.deepClone(value));";
+        }
+        const clone = Object.create(Object.getPrototypeOf(unknownVariable));
+
+        eval(`
+            ${isSetOrArray ? "let index = 0;" : ""}
+            for (const ${variableExpression} of propertyArray) {
+                const propertyKey = ${keyExpression};
+                const value = entry${variablePropertyExpression};
+                ${setNewValueExpression}
+                ${isSetOrArray ? "index++;" : ""}
+            }
+        `);
+        return clone;
+    },
     isPrimitive: (schemaSource: SchemaSource): schemaSource is PrimitiveType => {
         return (typeof schemaSource === "string");
     },
@@ -277,8 +339,28 @@ const Util = {
 
         for (let i = tupleOf.length - 1; i >= 0; i--) {
             const schemaSource = tupleOf[i];
-            validators.unshift(Util.getValidator(schemaSource));
-            if (typeof schemaSource === "string") continue;
+            const validator = Util.getValidator(schemaSource);
+            if (typeof schemaSource === "string") {
+                validators.unshift(validator);
+                continue;
+            }
+            if (!(DEFAULT_VALUE_KEY in schemaSource) || schemaSource[DEFAULT_VALUE_KEY] === DEFAULT_VALUE_PLACEHOLDER) {
+                validators.unshift(validator);
+            } else {
+                const defaultValue = schemaSource[DEFAULT_VALUE_KEY];
+                const defaultValueExpression = (typeof defaultValue !== "object" || defaultValue === null) ? "defaultValue" : "Util.deepClone(defaultValue)"; // Util.deepClone(defaultValue)
+                const assignDefaultValueFnString = `${(defaultValue === DELETE_SYMBOL) ? "delete object[propertyKey];" : `object[propertyKey] = ${defaultValueExpression};`}`;
+
+                const newValidator = ((unknownVariable: unknown, object: Array<any>, propertyKey: string | number) => {
+                    const isValid = validator(unknownVariable);
+                    if (isValid) return true;
+                    eval(assignDefaultValueFnString);
+                    return true;
+                }) as ValidatorFunction;
+
+                validators.unshift(newValidator);
+            }
+
             if (!("require" in schemaSource)) continue;
             if (schemaSource.require !== false) continue;
             allPropertiesRequired = false;
@@ -299,7 +381,7 @@ const Util = {
                     // All variables from now on are optional, and none are present
                     return true;
                 }
-                if (!validator(unknownVariable[i])) return false;
+                if (!validator(unknownVariable[i], unknownVariable, i)) return false;
             }
             return true;
         }
@@ -360,7 +442,7 @@ const Util = {
 
         return (unknownVariable) => {
             if (typeof unknownVariable !== "object" || unknownVariable === null) {
-                printDebug("Variable is not an object", true);
+                Util.printDebug("Variable is not an object", true);
                 return false;
             }
 
@@ -371,7 +453,7 @@ const Util = {
                 if (!(propertyKey in unknownVariable)) {
                     if (require === true && !allowPartial) {
                         if (!(validator(Symbol(), unknownVariable, propertyKey))) {
-                            printDebug("Required property is not present, could not assign default value", true);
+                            Util.printDebug("Required property is not present, could not assign default value", true);
                             return false;
                         }
                     }
@@ -381,7 +463,7 @@ const Util = {
                 // Object contains key, validate property
                 const unknownValue = unknownVariable[(propertyKey as keyof typeof unknownVariable)];
                 if (!(validator(unknownValue, unknownVariable, propertyKey))) {
-                    printDebug(`Property "${propertyKey}" is invalid: (${unknownValue})`, true);
+                    Util.printDebug(`Property "${propertyKey}" is invalid: (${unknownValue})`, true);
                     return false;
                 }
             }
@@ -392,7 +474,7 @@ const Util = {
             // All properties already validated
             if (allPropertiesRequired && allPropertiesPresent) {
                 const lengthMatches = (Object.keys(unknownVariable).length === propertyKeySet.size);
-                if (!lengthMatches) printDebug(`All properties required are required and all properties are present - object key count is different`, true);
+                if (!lengthMatches) Util.printDebug(`All properties required are required and all properties are present - object key count is different`, true);
                 return lengthMatches;
             }
 

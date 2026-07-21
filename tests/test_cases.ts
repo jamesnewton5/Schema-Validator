@@ -71,5 +71,63 @@ export const testCases: Array<TestCase> = [
             return outputArray.join(", ");
         },
         expectedResult: "true, false, false"
+    },
+    {
+        callback: () => {
+            const Vector3Schema = Schema.create({
+                properties: {
+                    x: Schema.number(),
+                    y: Schema.number(),
+                    z: Schema.number()
+                }
+            });
+
+            const TupleSchema = Schema.tuple(
+                Schema.string(),
+                Vector3Schema.default({ x: 0, y: 0, z: -1 })
+            );
+
+            const input1 = ["abc", undefined];
+            const input2 = ["abc"];
+
+            const outputArray = [];
+            outputArray.push(TupleSchema.check(input1)); // Output: true
+            outputArray.push(JSON.stringify(input1)); // Output: ["abc",{"x":0,"y":0,"z":-1}]
+
+            outputArray.push(TupleSchema.check(input2)); // Output: false
+            outputArray.push(JSON.stringify(input2)); // Output: ["abc"]
+
+            return outputArray.join(", ");
+        },
+        expectedResult: `true, ["abc",{"x":0,"y":0,"z":-1}], false, ["abc"]`
+    },
+    {
+        callback: () => {
+            const TestSchema = Schema.create({
+                properties: {
+                    key: Schema.string()
+                }
+            });
+
+            const TupleSchema = Schema.tuple(
+                TestSchema.default({ key: "Hello :)" }),
+            );
+
+            const input1 = ["abc"];
+            const input2 = ["abc"];
+
+            const outputArray = [];
+
+            TupleSchema.check(input1);
+            TupleSchema.check(input2);
+
+            (input1[0] as any).key = "Changed"
+
+            outputArray.push(JSON.stringify(input1)); // Output: ["Changed"]
+            outputArray.push(JSON.stringify(input2)); // Output: ["Hello :)"]
+
+            return outputArray.join(", ");
+        },
+        expectedResult: `[{"key":"Changed"}], [{"key":"Hello :)"}]`
     }
 ]

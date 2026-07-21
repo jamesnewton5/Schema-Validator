@@ -40,7 +40,9 @@ testCases.forEach((testCase, number) => {
         printColour(Colour.Green, ` Passed test case ${number} `, BackgroundColour.Green);
     } else {
         printColour(Colour.Red, ` Failed test case ${number} `, BackgroundColour.Red);
+        printColour(Colour.Red, `Expected: ${expectedResult} `);
+        printColour(Colour.Red, `Received: ${result} `);
     }
 });
 
-console.log(`\nFinished.\nTest cases passed: ${testCasesPassed}/${testCases.length}`);
+printColour(Colour.White, `\nFinished.\nTest cases passed: ${testCasesPassed}/${testCases.length}`);
