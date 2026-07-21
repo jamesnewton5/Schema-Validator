@@ -166,25 +166,26 @@ const Util = {
     deepClone: (unknownVariable: unknown): typeof unknownVariable => {
         if (typeof unknownVariable !== "object" || unknownVariable === null) return unknownVariable;
 
-        let propertyArray;
-        let variableExpression;
-        let variablePropertyExpression;
-        let keyExpression;
-        let setNewValueExpression;
-        let isSetOrArray;
+        const clone = Object.create(Object.getPrototypeOf(unknownVariable));
+        let propertyArray: Array<any> | Set<any>;
+        let index = 0;
+
+        let setNewValue: Function;
+        if (!(unknownVariable instanceof Map)) {
+            setNewValue = (propertyKey: keyof typeof clone, value: any) => { clone[propertyKey] = Util.deepClone(value); }
+        } else {
+            setNewValue = (propertyKey: keyof typeof clone, value: any) => { clone.set(propertyKey, Util.deepClone(value)); }
+        }
 
         if (Array.isArray(unknownVariable) || unknownVariable instanceof Set) {
-            isSetOrArray = true;
             propertyArray = unknownVariable;
-            variableExpression = "entry";
-            variablePropertyExpression = "";
-            keyExpression = "index";
+            for (const entry of propertyArray) {
+                const propertyKey = index;
+                const value = entry;
+                setNewValue(propertyKey, value);
+                index++;
+            }
         } else {
-            isSetOrArray = false;
-            variableExpression = "[...entry]";
-            variablePropertyExpression = "[1]";
-            keyExpression = "entry[0]";
-
             if (!(Symbol.iterator in unknownVariable)) {
                 propertyArray = Object.entries(unknownVariable);
             } else {
@@ -193,31 +194,21 @@ const Util = {
                     return Util.deepClone(iterator);
                 }
                 if (!("toArray" in iterator)) {
-                    propertyArray = unknownVariable;
+                    propertyArray = unknownVariable as any;
                 } else {
                     propertyArray = iterator().toArray();
                 }
             }
-        }
-
-        if (!(unknownVariable instanceof Map)) {
-            setNewValueExpression = "clone[propertyKey] = Util.deepClone(value);";
-        } else {
-            setNewValueExpression = "clone.set(propertyKey, Util.deepClone(value));";
-        }
-        const clone = Object.create(Object.getPrototypeOf(unknownVariable));
-
-        eval(`
-            ${isSetOrArray ? "let index = 0;" : ""}
-            for (const ${variableExpression} of propertyArray) {
-                const propertyKey = ${keyExpression};
-                const value = entry${variablePropertyExpression};
-                ${setNewValueExpression}
-                ${isSetOrArray ? "index++;" : ""}
+            for (const [...entry] of propertyArray) {
+                const propertyKey = entry[0];
+                const value = entry[1];
+                setNewValue(propertyKey, value);
             }
-        `);
+        }
         return clone;
     },
+    compose: (...args: Array<Function>) => (initialValue: any) =>
+        args.reduceRight((value, fn) => fn(value), initialValue),
     isPrimitive: (schemaSource: SchemaSource): schemaSource is PrimitiveType => {
         return (typeof schemaSource === "string");
     },
@@ -348,13 +339,17 @@ const Util = {
                 validators.unshift(validator);
             } else {
                 const defaultValue = schemaSource[DEFAULT_VALUE_KEY];
-                const defaultValueExpression = (typeof defaultValue !== "object" || defaultValue === null) ? "defaultValue" : "Util.deepClone(defaultValue)"; // Util.deepClone(defaultValue)
-                const assignDefaultValueFnString = `${(defaultValue === DELETE_SYMBOL) ? "delete object[propertyKey];" : `object[propertyKey] = ${defaultValueExpression};`}`;
+                const getDefaultValue = (typeof defaultValue !== "object" || defaultValue === null) ?
+                    () => defaultValue :
+                    () => Util.deepClone(defaultValue);
+                const assignDefaultValue = (defaultValue === DELETE_SYMBOL) ?
+                    (object: any, propertyKey: keyof typeof object) => { delete object[propertyKey]; } :
+                    (object: any, propertyKey: keyof typeof object) => { object[propertyKey] = getDefaultValue(); }
 
                 const newValidator = ((unknownVariable: unknown, object: Array<any>, propertyKey: string | number) => {
                     const isValid = validator(unknownVariable);
                     if (isValid) return true;
-                    eval(assignDefaultValueFnString);
+                    assignDefaultValue(object, propertyKey);
                     return true;
                 }) as ValidatorFunction;
 
@@ -428,12 +423,17 @@ const Util = {
                 continue;
             } else {
                 const defaultValue = propertySchema[DEFAULT_VALUE_KEY];
-                const assignDefaultValueFnString = `${(defaultValue === DELETE_SYMBOL) ? "delete object[propertyKey];" : "object[propertyKey] = defaultValue;"}`;
+                const getDefaultValue = (typeof defaultValue !== "object" || defaultValue === null) ?
+                    () => defaultValue :
+                    () => Util.deepClone(defaultValue);
+                const assignDefaultValue = (defaultValue === DELETE_SYMBOL) ?
+                    (object: any, propertyKey: keyof typeof object) => { delete object[propertyKey]; } :
+                    (object: any, propertyKey: keyof typeof object) => { object[propertyKey] = getDefaultValue(); }
 
                 const newValidator = ((unknownVariable: unknown, object: Record<string | number, any>, propertyKey: string | number) => {
                     const isValid = validator(unknownVariable);
                     if (isValid) return true;
-                    eval(assignDefaultValueFnString);
+                    assignDefaultValue(object, propertyKey);
                     return true;
                 }) as ValidatorFunction;
                 propertyValidatorSubArrays.push([subArray[0], newValidator, require]);
