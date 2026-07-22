@@ -164,59 +164,66 @@ const Util = {
         console.log(`${failed ? "Invalid: " : ""} ${message}`);
     },
     deepClone: (unknownVariable: any): typeof unknownVariable => {
-        if (typeof unknownVariable !== "object" || unknownVariable === null) return unknownVariable;
-        if (typeof unknownVariable === "function") return unknownVariable;
-        let clone = new unknownVariable.constructor();
-        let propertyArray: Array<any> | Set<any>;
-        let index = 0;
+        const visited = new WeakMap();
+        return _deepClone(unknownVariable);
+        function _deepClone(unknownVariable: any): typeof unknownVariable {
+            if (typeof unknownVariable !== "object" || unknownVariable === null) return unknownVariable;
+            if (typeof unknownVariable === "function") return unknownVariable;
 
-        let setNewValue: Function;
-        if (unknownVariable instanceof Set) {
-            setNewValue = (propertyKey: keyof typeof clone, value: any) => {
-                clone.add(Util.deepClone(value));
-            }
-        } else if (unknownVariable instanceof Map) {
-            setNewValue = (propertyKey: keyof typeof clone, value: any) => {
-                clone.set(propertyKey, Util.deepClone(value));
-            }
-        } else {
-            setNewValue = (propertyKey: keyof typeof clone, value: any) => {
-                clone[propertyKey] = Util.deepClone(value);
-            }
-        }
+            if (visited.has(unknownVariable)) return visited.get(unknownVariable);
 
-        if (Array.isArray(unknownVariable) || unknownVariable instanceof Set) {
-            propertyArray = unknownVariable;
-            for (const entry of propertyArray) {
-                const propertyKey = index;
-                const value = entry;
-                setNewValue(propertyKey, value);
-                index++;
-            }
-        } else {
-            if (!(Symbol.iterator in unknownVariable)) {
-                propertyArray = Object.entries(unknownVariable);
+            const clone = new unknownVariable.constructor();
+            visited.set(unknownVariable, clone);
+            let propertyArray: Array<any> | Set<any> | undefined;
+
+            let setNewValue: Function;
+            if (unknownVariable instanceof Set) {
+                setNewValue = (propertyKey: keyof typeof clone, value: any) => {
+                    clone.add(_deepClone(value));
+                }
+            } else if (unknownVariable instanceof Map) {
+                setNewValue = (propertyKey: keyof typeof clone, value: any) => {
+                    clone.set(propertyKey, _deepClone(value));
+                }
             } else {
-                const iterator = unknownVariable[Symbol.iterator];
-                if (typeof iterator !== "function") {
-                    return Util.deepClone(iterator);
+                setNewValue = (propertyKey: keyof typeof clone, value: any) => {
+                    clone[propertyKey] = _deepClone(value);
                 }
-                if (!("toArray" in iterator)) {
-                    propertyArray = unknownVariable as any;
+            }
+
+            if (Array.isArray(unknownVariable) || unknownVariable instanceof Set) {
+                propertyArray = unknownVariable;
+                let index = 0;
+                for (const entry of propertyArray) {
+                    const value = entry;
+                    setNewValue(index, value);
+                    index++;
+                }
+            } else {
+                if (!(Symbol.iterator in unknownVariable)) {
+                    propertyArray = Object.entries(unknownVariable);
                 } else {
-                    propertyArray = iterator().toArray();
+                    const iterator = unknownVariable[Symbol.iterator];
+                    if (typeof iterator !== "function") {
+                        // Property array will be undefined:
+                        clone[Symbol.iterator] = _deepClone(iterator);
+                    } else if (!("toArray" in iterator)) {
+                        propertyArray = unknownVariable as any;
+                    } else {
+                        propertyArray = iterator().toArray();
+                    }
+                }
+                if (propertyArray !== undefined) {
+                    for (const [...entry] of propertyArray) {
+                        const propertyKey = entry[0];
+                        const value = entry[1];
+                        setNewValue(propertyKey, value);
+                    }
                 }
             }
-            for (const [...entry] of propertyArray) {
-                const propertyKey = entry[0];
-                const value = entry[1];
-                setNewValue(propertyKey, value);
-            }
+            return clone;
         }
-        return clone;
     },
-    compose: (...args: Array<Function>) => (initialValue: any) =>
-        args.reduceRight((value, fn) => fn(value), initialValue),
     isPrimitive: (schemaSource: SchemaSource): schemaSource is PrimitiveType => {
         return (typeof schemaSource === "string");
     },
@@ -253,10 +260,8 @@ const Util = {
         if (options === undefined) {
             return PROPERTY_DEFAULTS;
         } else {
-            options.allowPartial = options.allowPartial ?? PROPERTY_DEFAULTS.allowPartial;
-            options.allowExtensions = options.allowExtensions ?? PROPERTY_DEFAULTS.allowExtensions;
+            return Object.assign({}, PROPERTY_DEFAULTS, options);
         }
-        return options as ObjectSchemaOptions;
     },
     getMultiTypeValidator: (schemaSourceArray: Array<SchemaSource>): ValidatorFunction => {
         const validators: Array<ValidatorFunction> = [];
@@ -264,7 +269,7 @@ const Util = {
             validators.push(Util.getValidator(singleSchemaSource));
         }
         if (validators.length === 0) return () => false;
-        if (validators.length === 1) return validators[1];
+        if (validators.length === 1) return validators[0];
         return (unknownVariable) => {
             for (const validator of validators) {
                 if (!validator(unknownVariable)) continue;
@@ -291,9 +296,7 @@ const Util = {
         }
 
         let validator: ValidatorFunction;
-        if (schemaSource instanceof Schema) {
-            validator = schemaSource.check as CheckFunction;
-        } else if (Util.isSchemaExtended(schemaSource)) {
+        if (Util.isSchemaExtended(schemaSource)) {
             const validator = schemaSource.check;
             return (unknownVariable) => validator(unknownVariable);
         } else if (Util.isArraySchema(schemaSource)) {
