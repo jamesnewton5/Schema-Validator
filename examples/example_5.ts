@@ -8,14 +8,14 @@ const ObjectSchema = Schema.create({
 
 const array: Array<[string, number]> = [["abc", 123]];
 
-console.log(ObjectSchema.check({
+console.log(ObjectSchema.validate({
     map: new Map(array)
 })); // Output: true
 
-console.log(ObjectSchema.check({
+console.log(ObjectSchema.validate({
     map: new Set(array)
 })); // Output: false
 
-console.log(ObjectSchema.check({
+console.log(ObjectSchema.validate({
     map: array
 })); // Output: false

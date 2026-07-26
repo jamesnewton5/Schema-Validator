@@ -5,7 +5,7 @@ type NumberStringSet = Set<number | string>;
 // Comma separated parameters for creating array and set schemas:
 const SetSchema = Schema.create(Schema.set(Schema.number(), Schema.string()));
 const testSet = new Set([1, 2, 3, 4, "five"]);
-console.log(SetSchema.check<NumberStringSet>(testSet)); // Output: true
+console.log(SetSchema.validate<NumberStringSet>(testSet)); // Output: true
 
 
 
@@ -21,7 +21,7 @@ const testArray: Array<[string, number | string]> = [
     ["key2", "string"]
 ];
 const testMap = new Map(testArray);
-console.log(MapSchema.check(testMap)); // Output: true
+console.log(MapSchema.validate(testMap)); // Output: true
 
 
 
@@ -37,6 +37,6 @@ const testArray2: Array<[string | number, any]> = [
     ["key2", undefined]
 ];
 const testMap2 = new Map(testArray2);
-console.log(MapSchema2.check(testMap2)); // Output: true
+console.log(MapSchema2.validate(testMap2)); // Output: true
 
 

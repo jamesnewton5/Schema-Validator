@@ -1,5 +1,5 @@
-type SchemaSource = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | MapSchema | SetSchema | PrototypeSchema | SchemaExtended;
-type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "object" | "any" | "none";
+type SchemaSource = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | MapSchema | SetSchema | PrototypeSchema | SchemaExtended | ExpressionFunction;
+type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "object" | "any" | "none" | "expression";
 
 interface SchemaExtended {
     require: boolean;
@@ -7,7 +7,7 @@ interface SchemaExtended {
     [DEFAULT_VALUE_KEY]: any;
     optional: () => SchemaExtended;
     default: (defaultValue: any) => SchemaExtended;
-    check: CheckFunction;
+    validate: ValidateFunction;
 };
 type Class<T> = new (...args: any[]) => T
 type PrototypeSchema = {
@@ -36,7 +36,8 @@ type ObjectSchema = {
     }
 };
 
-type CheckFunction = <T>(unknownVariable: unknown) => unknownVariable is T;
+type ValidateFunction = <T>(unknownVariable: unknown) => unknownVariable is T;
+type ExpressionFunction = (unknownVariable: unknown, object: Record<string | number, any>, propertyKey: string | number) => boolean;
 type ValidatorFunction = (unknownVariable: unknown, object?: Record<string | number, any>, propertyKey?: string | number) => boolean;
 
 
@@ -52,47 +53,46 @@ const DELETE_SYMBOL = Symbol();
 export class Schema {
     public static debug = false;
 
-    optional?: () => SchemaExtended
-    default?: (defaultValue: any) => SchemaExtended
-    check?: CheckFunction;
+    optional?: () => SchemaExtended;
+    default?: (defaultValue: any) => SchemaExtended;
+    validate?: ValidateFunction;
 
 
     public static KEYWORD = {
         delete: DELETE_SYMBOL
     };
 
-    private static getExtendedSchema(thisSchema: Schema, validator: CheckFunction): SchemaExtended {
+    private static getExtendedSchema(thisSchema: Schema, validator: ValidateFunction): SchemaExtended {
         // All methods present on the schema returned via .optional or .default
         const schemaExtended: SchemaExtended = {
             require: true,
             source: thisSchema,
             [DEFAULT_VALUE_KEY]: DEFAULT_VALUE_PLACEHOLDER,
             optional: function () {
-                // Optional and default variables are for schemas used within other schemas, remove the check method
-                // this.check = undefined as unknown as CheckFunction;
+                // Optional and default variables are for schemas used within other schemas, remove the validate method
+                // this.validate = undefined as unknown as ValidateFunction;
                 const schemaPropertyClone = { ...this };
                 schemaPropertyClone.require = false;
                 return schemaPropertyClone as unknown as SchemaExtended;
             },
             default: function (defaultValue: any) {
-                // Optional and default variables are for schemas used within other schemas, remove the check method
-                // this.check = undefined as unknown as CheckFunction;
+                // Optional and default variables are for schemas used within other schemas, remove the validate method
+                // this.validate = undefined as unknown as ValidateFunction;
                 const schemaPropertyClone = { ...this };
                 schemaPropertyClone[DEFAULT_VALUE_KEY] = defaultValue;
                 return schemaPropertyClone as unknown as SchemaExtended;
             },
-            check: validator
+            validate: validator
         };
         return schemaExtended;
     }
 
     public static create(...args: Array<SchemaSource>): SchemaExtended {
         const schema = {} as Schema;
-        Object.setPrototypeOf(schema, Schema);
         const validator = (args.length === 1 ?
             Util.getValidator(args[0]) :
             Util.getValidator(args.map((source) => Schema.create(source)))
-        ) as CheckFunction;
+        ) as ValidateFunction;
         const schemaExtended = Schema.getExtendedSchema(schema, validator);
 
         for (const schemaSource of args) {
@@ -108,6 +108,8 @@ export class Schema {
 
     public static any() { return Schema.create("any") };
     public static none() { return Schema.create("none") };
+    public static remove() { return Schema.create("none").default(Schema.KEYWORD.delete) };
+    public static expression(expressionFunction: ExpressionFunction) { return Schema.create(expressionFunction) }
 
     // Primitive
     public static string() { return Schema.create("string") };
@@ -121,12 +123,8 @@ export class Schema {
         return Schema.create({ objectPrototype: object });
     }
 
-    public static array(...args: Array<SchemaSource>) {
-        if (args.length === 1) {
-            return Schema.create({ arrayOf: args[0] });
-        } else {
-            return Schema.create({ arrayOf: args });
-        }
+    public static array(schema: SchemaSource) {
+        return Schema.create({ arrayOf: schema });
     }
 
     public static arrayFromMap(keyType: SchemaSource, propertyType: SchemaSource | Array<SchemaSource>) {
@@ -296,9 +294,11 @@ const Util = {
         }
 
         let validator: ValidatorFunction;
-        if (Util.isSchemaExtended(schemaSource)) {
-            const validator = schemaSource.check;
-            return (unknownVariable) => validator(unknownVariable);
+        if (typeof schemaSource === "function") {
+            validator = schemaSource as ValidatorFunction;
+        } else if (Util.isSchemaExtended(schemaSource)) {
+            validator = schemaSource.validate;
+            // return (unknownVariable) => validator(unknownVariable);
         } else if (Util.isArraySchema(schemaSource)) {
             validator = Util.getArrayValidator(schemaSource);
         } else if (Util.isTupleSchema(schemaSource)) {
@@ -322,11 +322,36 @@ const Util = {
     },
     getArrayValidator: (arraySchema: ArraySchema): ValidatorFunction => {
         const arrayOf = arraySchema.arrayOf;
-        const validator = Util.getValidator(arrayOf);
+        let validator;
+        if (
+            typeof arrayOf !== "string" &&
+            DEFAULT_VALUE_KEY in arrayOf &&
+            arrayOf[DEFAULT_VALUE_KEY] !== DEFAULT_VALUE_PLACEHOLDER
+        ) {
+            const defaultValue = arrayOf[DEFAULT_VALUE_KEY];
+            const getDefaultValue = (typeof defaultValue !== "object" || defaultValue === null) ?
+                () => defaultValue :
+                () => Util.deepClone(defaultValue);
+            const assignDefaultValue = (defaultValue === DELETE_SYMBOL) ?
+                (object: Array<any>, index: number) => { object.splice(index, 1); } :
+                (object: Array<any>, index: number) => { object[index] = getDefaultValue(); }
+
+            const entryValidator = Util.getValidator(arrayOf);
+
+            validator = ((unknownVariable: unknown, object: Array<any>, index: number) => {
+                const isValid = entryValidator(unknownVariable);
+                if (isValid) return true;
+                assignDefaultValue(object, index);
+                return true;
+            }) as ValidatorFunction;
+        } else {
+            validator = Util.getValidator(arrayOf);
+        }
+
         return (unknownVariable) => {
             if (!Array.isArray(unknownVariable)) return false;
-            for (const unknownValue of unknownVariable) {
-                if (!validator(unknownValue)) return false;
+            for (let i = unknownVariable.length - 1; i >= 0; i--) {
+                if (!validator(unknownVariable[i], unknownVariable, i)) return false;
             }
             return true;
         }
@@ -380,7 +405,6 @@ const Util = {
             if (allPropertiesRequired && unknownVariableLength !== length) return false;
             else if (unknownVariableLength < lastOptionalVariableIndex) return false;
 
-            // Use the length property here so the JS engine can optimise and avoid the array bounds check each loop:
             for (let i = 0; i < unknownVariable.length; i++) {
                 const validator = validators[i];
                 if (i >= lastOptionalVariableIndex && i >= unknownVariableLength) {

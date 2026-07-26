@@ -31,7 +31,7 @@ const testData = {
 outputObject(testData);
 
 function outputObject(object: unknown) {
-    const isValid = TestSchema.check<TestObjectType>(object);
+    const isValid = TestSchema.validate<TestObjectType>(object);
     if (!isValid) return;
 
     // Output: 0 0 -1 null

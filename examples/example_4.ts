@@ -47,7 +47,7 @@ function retrieveDataFromString(): PeopleMap | undefined {
     const mapAsString = storedData;
     try {
         const arrayFromMap = JSON.parse(mapAsString);
-        if (!PeopleMapArraySchema.check<PeopleMapAsArray>(arrayFromMap)) return undefined;
+        if (!PeopleMapArraySchema.validate<PeopleMapAsArray>(arrayFromMap)) return undefined;
 
         const peopleFromId = new Map(arrayFromMap);
         return peopleFromId;

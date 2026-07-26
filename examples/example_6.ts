@@ -7,8 +7,8 @@ const TupleSchema = Schema.create(Schema.tuple(
     Schema.number().optional()
 ));
 
-console.log(TupleSchema.check<Tuple>(["abc", 123, 123])); // Output: true
-console.log(TupleSchema.check<Tuple>(["abc", 123])); // Output: true
-console.log(TupleSchema.check<Tuple>(["abc", 123, "abc"])); // Output: false
-console.log(TupleSchema.check<Tuple>(["abc"])); // Output: false
+console.log(TupleSchema.validate<Tuple>(["abc", 123, 123])); // Output: true
+console.log(TupleSchema.validate<Tuple>(["abc", 123])); // Output: true
+console.log(TupleSchema.validate<Tuple>(["abc", 123, "abc"])); // Output: false
+console.log(TupleSchema.validate<Tuple>(["abc"])); // Output: false
 
