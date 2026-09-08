@@ -1,14 +1,31 @@
 type SchemaSource = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | MapSchema | SetSchema | PrototypeSchema | SchemaExtended | ExpressionFunction;
 type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "object" | "any" | "none" | "expression";
 
-interface SchemaExtended {
+export interface SchemaExtended<Type = any> {
     require: boolean;
     source: SchemaSource | Array<SchemaSource>;
-    [DEFAULT_VALUE_KEY]: any;
-    optional: () => SchemaExtended;
-    default: (defaultValue: any) => SchemaExtended;
+    [DEFAULT_VALUE_KEY]: Type;
+    optional: () => SchemaExtended<Type>;
+    default: (defaultValue: Type | typeof Schema.KEYWORD[keyof typeof Schema.KEYWORD]) => SchemaExtended<Type>;
     validate: ValidateFunction;
 };
+
+type SchemaSourceValue<Source extends SchemaSource> =
+    Source extends "string" ? string :
+    Source extends "number" ? number :
+    Source extends "boolean" ? boolean :
+    Source extends "undefined" ? undefined :
+    Source extends "null" ? null :
+    Source extends "object" ? object :
+    Source extends "any" ? any :
+    Source extends "none" ? never :
+    Source extends "expression" ? Function :
+    any;
+type SchemaValue<Schema extends SchemaExtended> =
+    Schema[typeof DEFAULT_VALUE_KEY];
+
+
+
 type Class<T> = new (...args: any[]) => T
 type PrototypeSchema = {
     objectPrototype: Class<Object>
@@ -46,15 +63,15 @@ const PROPERTY_DEFAULTS: ObjectSchemaOptions = {
     allowExtensions: false
 };
 
-const DEFAULT_VALUE_KEY = Symbol();
+export const DEFAULT_VALUE_KEY = Symbol();
 const DEFAULT_VALUE_PLACEHOLDER = Symbol();
 const DELETE_SYMBOL = Symbol();
 
-export class Schema {
+export class Schema<Type = any> {
     public static debug = false;
 
-    optional?: () => SchemaExtended;
-    default?: (defaultValue: any) => SchemaExtended;
+    optional?: () => SchemaExtended<Type>;
+    default?: (defaultValue: any) => SchemaExtended<Type>;
     validate?: ValidateFunction;
 
 
@@ -87,7 +104,21 @@ export class Schema {
         return schemaExtended;
     }
 
-    public static create(...args: Array<SchemaSource>): SchemaExtended {
+    public static create<Source extends SchemaSource>(
+        source: Source
+    ): SchemaExtended<SchemaSourceValue<Source>>;
+
+    public static create<
+        Schemas extends SchemaExtended<any>[]
+    >(...schemas: Schemas): SchemaExtended<
+        SchemaValue<Schemas[number]>
+    >;
+
+    public static create<
+        Schemas extends SchemaExtended[]
+    >(...args: Schemas): SchemaExtended<
+        SchemaValue<Schemas[number]>
+    > {
         const schema = {} as Schema;
         const validator = (args.length === 1 ?
             Util.getValidator(args[0]) :
@@ -96,7 +127,7 @@ export class Schema {
         const schemaExtended = Schema.getExtendedSchema(schema, validator);
 
         for (const schemaSource of args) {
-            if (schemaSource === "none") {
+            if (schemaSource as unknown === "none") {
                 schemaExtended.require = false;
                 break;
             }
@@ -112,11 +143,11 @@ export class Schema {
     public static expression(expressionFunction: ExpressionFunction) { return Schema.create(expressionFunction) }
 
     // Primitive
-    public static string() { return Schema.create("string") };
-    public static number() { return Schema.create("number") };
-    public static boolean() { return Schema.create("boolean") };
-    public static undefined() { return Schema.create("undefined") };
-    public static null() { return Schema.create("null") };
+    public static string(): SchemaExtended<string> { return Schema.create("string") };
+    public static number(): SchemaExtended<number> { return Schema.create("number") };
+    public static boolean(): SchemaExtended<boolean> { return Schema.create("boolean") };
+    public static undefined(): SchemaExtended<undefined> { return Schema.create("undefined") };
+    public static null(): SchemaExtended<null> { return Schema.create("null") };
 
     // Non-primitive
     public static objectPrototype(object: PrototypeSchema["objectPrototype"]) {
