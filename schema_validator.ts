@@ -20,6 +20,11 @@ type SchemaSourceValue<Source extends SchemaSource> =
     Source extends "any" ? any :
     Source extends "none" ? never :
     Source extends "expression" ? Function :
+    Source extends ObjectSchema ? {
+        [key in keyof Source["properties"]]: Source["properties"][key] extends SchemaExtended
+        ? Source["properties"][key][typeof DEFAULT_VALUE_KEY]
+        : never
+    } :
     any;
 type SchemaValue<Schema extends SchemaExtended> =
     Schema[typeof DEFAULT_VALUE_KEY];
@@ -71,7 +76,7 @@ export class Schema<Type = any> {
     public static debug = false;
 
     optional?: () => SchemaExtended<Type>;
-    default?: (defaultValue: any) => SchemaExtended<Type>;
+    default?: (defaultValue: Type) => SchemaExtended<Type>;
     validate?: ValidateFunction;
 
 
