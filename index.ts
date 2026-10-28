@@ -1,1 +1,1 @@
-export { Schema } from "./schema_validator";
+export { Schema, DEFAULT_VALUE_KEY, SchemaExtended } from "./schema_validator";

@@ -1,5 +1,8 @@
 type SchemaSource = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | MapSchema | SetSchema | PrototypeSchema | SchemaExtended | ExpressionFunction;
 type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "object" | "any" | "none" | "expression";
+type Vector3 = { x: number; y: number; z: number };
+type Vector2 = { x: number; y: number };
+type VectorXZ = { x: number; z: number };
 
 export interface SchemaExtended<Type = any> {
     require: boolean;
@@ -189,6 +192,32 @@ export class Schema<Type = any> {
         } else {
             return Schema.create({ setOf: args });
         }
+    }
+
+    public static Vector3(): SchemaExtended<Vector3> {
+        return Schema.create({
+            properties: {
+                x: Schema.number(),
+                y: Schema.number(),
+                z: Schema.number()
+            }
+        });
+    }
+    public static Vector2(): SchemaExtended<Vector2> {
+        return Schema.create({
+            properties: {
+                x: Schema.number(),
+                y: Schema.number()
+            }
+        });
+    }
+    public static VectorXZ(): SchemaExtended<VectorXZ> {
+        return Schema.create({
+            properties: {
+                x: Schema.number(),
+                z: Schema.number()
+            }
+        });
     }
 }
 
