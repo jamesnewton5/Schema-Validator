@@ -9,7 +9,7 @@ export interface SchemaExtended<Type = any> {
     source: SchemaSource | Array<SchemaSource>;
     [DEFAULT_VALUE_KEY]: Type;
     optional: () => SchemaExtended<Type>;
-    default: (defaultValue: Type | typeof Schema.KEYWORD[keyof typeof Schema.KEYWORD]) => SchemaExtended<Type>;
+    default: (defaultValue: Type) => SchemaExtended<Type>;
     validate: ValidateFunction;
 };
 
@@ -147,7 +147,7 @@ export class Schema<Type = any> {
 
     public static any() { return Schema.create("any") };
     public static none() { return Schema.create("none") };
-    public static remove() { return Schema.create("none").default(Schema.KEYWORD.delete) };
+    public static remove() { return Schema.create("none").default(Schema.KEYWORD.delete as never) };
     public static expression(expressionFunction: ExpressionFunction) { return Schema.create(expressionFunction) }
 
     // Primitive
