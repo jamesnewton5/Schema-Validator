@@ -1,6 +1,6 @@
 import { Schema } from "../schema_validator";
 
-const ObjectSchema = new Schema({
+const ObjectSchema = Schema.create({
     properties: {
         map: Schema.objectPrototype(Map)
     }
@@ -8,14 +8,14 @@ const ObjectSchema = new Schema({
 
 const array: Array<[string, number]> = [["abc", 123]];
 
-console.log(ObjectSchema.check({
+console.log(ObjectSchema.validate({
     map: new Map(array)
 })); // Output: true
 
-console.log(ObjectSchema.check({
+console.log(ObjectSchema.validate({
     map: new Set(array)
 })); // Output: false
 
-console.log(ObjectSchema.check({
+console.log(ObjectSchema.validate({
     map: array
 })); // Output: false

@@ -1,8 +1,15 @@
-<h1 style="margin-bottom: 12px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; color: #FFAAFF; border-bottom: none;">
-JSON / JavaScript Schema Validator
-</h1>
-Installation:
+# JSON / JavaScript Schema Validator
+#### - Zero dependencies<br> - Small file size (24 KB)<br> - Easy to setup<br> - Very fast
 
+**README.md**<br>
+┠ [Installation](#installation)<br>
+┠ [Example](#example)<br>
+┠ [Use Case](#use-case)<br>
+┠ [Basic Setup](#basic-setup)<br>
+┠ [Usage](#usage)<br>
+┖ [Methods and Examples](#methods-and-examples)
+
+## Installation
 ```
 npm install github:jamesnewton5/Schema-Validator
 ```
@@ -10,16 +17,11 @@ npm install github:jamesnewton5/Schema-Validator
 ```
 git clone https://github.com/jamesnewton5/Schema-Validator
 ```
-<h3 style="margin-bottom: 8px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; border-bottom: none;">- Zero dependencies</h3>
-<h3 style="margin-bottom: 8px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; border-bottom: none;">- Small file size (12 KB)</h3>
-<h3 style="margin-bottom: 8px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; border-bottom: none;">- Easy to setup</h3>
-<h3 style="margin-bottom: 8px; margin-top: 0px; padding-bottom: 0px; padding-top: 0px; border-bottom: none;">- Very fast</h3><br>
-
-# Example
+## Example
 ```typescript
 type Vector3 = {x: number, y: number, z: number};
 
-const Vector3Schema = new Schema({
+const Vector3Schema = Schema.create({
     properties: {
         x: Schema.number(),
         y: Schema.number(),
@@ -28,41 +30,77 @@ const Vector3Schema = new Schema({
 });
 
 function outputVector3(vector3: unknown) {         
-    const isVector3 = Vector3Schema.check<Vector3>(vector3);
+    const isVector3 = Vector3Schema.validate<Vector3>(vector3);
     if (!isVector3) return;
     console.log(vector3.x, vector3.y, vector3.z);
 }
 ```
 
-# Use Case - Type Validation
-
+## Use Case
+### Type Validation
 ```typescript
-const jsonString = "{x: 0, y: 0, z: 0}";
-const testData = JSON.parse(jsonString);
-outputVector3(testData);
+type Vector3 = {x: number, y: number, z: number};
 
 // This sucks:
-function outputVector3(vector3: any) {
-    if (typeof testData.x !== "number" || typeof testData.y !== "number" || typeof testData.z !== "number") {
-        return;
+function isVector3(vector3: unknown): vector3 is Vector3 {
+    if (typeof vector3 !== "object" || vector3 === null) return false;
+    if (Object.keys(vector3).length !== 3) return false;
+    if (!("x" in vector3) || !("y" in vector3) || !("z" in vector3)) return false;
+    if (typeof vector3.x !== "number" || typeof vector3.y !== "number" || typeof vector3.z !== "number") {
+        return false;
     }
-    console.log(vector3.x, vector3.y, vector3.z);
+    return true;
+}
+// This doesn't:
+const Vector3Schema = Schema.create({
+    properties: {
+        x: Schema.number(),
+        y: Schema.number(),
+        z: Schema.number()
+    }
+});
+const isVector3 = Vector3Schema.validate<Vector3>;
+```
+### Schema Migration
+```typescript
+type UserDataV1 = {
+    id: string;
+    displayName: string;
+    loginCount: number;
+};
+
+type UserDataV2 = {
+    id: string;
+    displayName: string;
+    lastLoginTime: number;
+};
+
+const UserDataSchema = Schema.create({
+    properties: {
+        id: Schema.string(),
+        displayName: Schema.string(),
+        loginCount: Schema.remove(),
+        lastLoginTime: Schema.number().default(0)
+    }
+});
+
+function updateUserData(userData: UserDataV1 | UserDataV2): userData is UserDataV2 {
+    UserDataSchema.validate(userData);
+    return true;
 }
 ```
 
-# Basic Setup
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Default Options</h3>
-
+## Basic Setup
+### Default Options:
 ```typescript
 const options: SchemaOptions = {
     allowPartial: false, // When set to false all properties are required
     allowExtensions: false // When set to false no extra properties are permitted
 };
 ```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Schema with Default Options:</h3>
-
+### Schema with Default Options:
 ```typescript
-const PersonSchema = new Schema({
+const PersonSchema = Schema.create({
     // (No options property)
     properties: {
         firstName: Schema.string(),
@@ -70,10 +108,9 @@ const PersonSchema = new Schema({
     }
 });
 ```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Options Specified:</h3>
-
+### Options Specified:
 ```typescript
-const PersonSchema = new Schema({
+const PersonSchema = Schema.create({
     options: {
         allowPartial: false,
         allowExtensions: true
@@ -84,11 +121,9 @@ const PersonSchema = new Schema({
     }
 });
 ```
-
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">One Option Specified:</h3>
-
+### One Option Specified:
 ```typescript
-const PersonSchema = new Schema({
+const PersonSchema = Schema.create({
     options: {
         allowExtensions: true // Changed to true, allowPartial will resort to the default value (false)
     },
@@ -104,14 +139,14 @@ const testData = {
     favouriteColour: "Green"
 };
 
-console.log(PersonSchema.check(testData)); // Output: true
+console.log(PersonSchema.validate(testData)); // Output: true
 ```
 
-# Usage
+## Usage
 ### No type parameter (bad)
 ```diff
 function outputVector3(vector3: unknown) {
-     const isVector3 = Vector3Schema.check(vector3);
+     const isVector3 = Vector3Schema.validate(vector3);
      if (!isVector3) return;
 -    console.log(vector3.x, vector3.y, vector3.z); <--- TypeScript error: 'vector3' is of type 'unknown'.
 }
@@ -122,23 +157,20 @@ type Vector3 = {x: number, y: number, z: number};
 
 function outputVector3(vector3: unknown) {
 +                                          ↓ ↓ ↓            
-+   const isVector3 = Vector3Schema.check<Vector3>(vector3);
++   const isVector3 = Vector3Schema.validate<Vector3>(vector3);
     if (!isVector3) return;
     console.log(vector3.x, vector3.y, vector3.z); // <--- No error
 }
 ```
 
-# Methods and Examples
-<p style="margin-bottom: 6px; padding-bottom: 0px;">Schema methods can be used in place of strings to define types:</p>
-
+## Methods and Examples
+Strings can be used in place of schemas to define types:
 ```typescript
-new Schema(Schema.array(Schema.number()));
+Schema.array("number");
 ```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Optional Method</h3>
-
-
+### Optional Method
 ```diff
-const PersonSchema = new Schema({
+const PersonSchema = Schema.create({
     properties: {
         firstName: Schema.string(),
 +       lastName: Schema.string().optional()
@@ -146,115 +178,104 @@ const PersonSchema = new Schema({
 });
 ```
 ```typescript
-console.log(PersonSchema.check<Person>({
+console.log(PersonSchema.validate<Person>({
     firstName: "John",
     lastName: "Glorp"
 })); // Output: true
 
-console.log(PersonSchema.check<Person>({
+console.log(PersonSchema.validate<Person>({
     firstName: "John"
 })); // Output: true
 
-console.log(PersonSchema.check<Person>({
+console.log(PersonSchema.validate<Person>({
     firstName: "John",
     lastName: 4
 })); // Output: false
 ```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Array</h3>
-
+### Array
 ```typescript
 type SingleTypeArray = Array<number>;
 type MultiTypeArray = Array<number | string>;
 
-const SingleTypeArraySchema = new Schema(Schema.array(Schema.number()));
+const SingleTypeArraySchema = Schema.array(Schema.number());
 
-const MultiTypeArraySchema = new Schema(
-    // Comma separated parameters for creating an array schema:
-    Schema.array(Schema.number(), Schema.string())
-);
+// Multi-type variables must be joined using Schema.union or Schema.create
+const MultiTypeArraySchema = Schema.array(Schema.union(Schema.number(), Schema.string()));
 
-console.log(SingleTypeArraySchema.check<SingleTypeArray>([1, 2, 3, 4, 5])); // Output: true
-console.log(SingleTypeArraySchema.check<SingleTypeArray>([1, 2, 3, 4, "five"])); // Output: false
+console.log(SingleTypeArraySchema.validate<SingleTypeArray>([1, 2, 3, 4, 5])); // Output: true
+console.log(SingleTypeArraySchema.validate<SingleTypeArray>([1, 2, 3, 4, "five"])); // Output: false
 
-console.log(MultiTypeArraySchema.check<MultiTypeArray>([1, 2, 3, 4, 5])); // Output: true
-console.log(MultiTypeArraySchema.check<MultiTypeArray>([1, 2, 3, 4, "five"])); // Output: true
+console.log(MultiTypeArraySchema.validate<MultiTypeArray>([1, 2, 3, 4, 5])); // Output: true
+console.log(MultiTypeArraySchema.validate<MultiTypeArray>([1, 2, 3, 4, "five"])); // Output: true
 ```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Tuple</h3>
-
+### Tuple
 ```typescript
-const TupleSchema = new Schema(Schema.tuple(
+const TupleSchema = Schema.tuple(
     Schema.string(),
     Vector3Schema
-));
+);
 
-console.log(TupleSchema.check(["abc", { x: 0, y: 0, z: 0 }])); // Output: true
+console.log(TupleSchema.validate(["abc", { x: 0, y: 0, z: 0 }])); // Output: true
 
-console.log(TupleSchema.check(["def", { x: 0, y: 0, z: "zero" }])); // Output: false
+console.log(TupleSchema.validate(["def", { x: 0, y: 0, z: "zero" }])); // Output: false
 
-console.log(TupleSchema.check([{ x: 0, y: 0, z: 0 }, "abc"])); // Output: false
+console.log(TupleSchema.validate([{ x: 0, y: 0, z: 0 }, "abc"])); // Output: false
 ```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Tuple with Optional Fields</h3>
-
+### Tuple with Optional Fields
 ```typescript
 type Tuple = [string, number, number?];
-const TupleSchema = new Schema(Schema.tuple(
+const TupleSchema = Schema.tuple(
     Schema.string(),
     Schema.number(),
     Schema.number().optional()
-));
-
-console.log(TupleSchema.check<Tuple>(["abc", 123, 123])); // Output: true
-console.log(TupleSchema.check<Tuple>(["abc", 123])); // Output: true
-console.log(TupleSchema.check<Tuple>(["abc", 123, "abc"])); // Output: false
-console.log(TupleSchema.check<Tuple>(["abc"])); // Output: false
-```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Set</h3>
-
-```typescript
-// Comma separated parameters for creating array and set schemas:
-const SetSchema = new Schema(
-    Schema.set(Schema.number(), Schema.string())
 );
+
+console.log(TupleSchema.validate<Tuple>(["abc", 123, 123])); // Output: true
+console.log(TupleSchema.validate<Tuple>(["abc", 123])); // Output: true
+console.log(TupleSchema.validate<Tuple>(["abc", 123, "abc"])); // Output: false
+console.log(TupleSchema.validate<Tuple>(["abc"])); // Output: false
+```
+### Set
+```typescript
+const SetSchema = Schema.set(Schema.union(Schema.number(), Schema.string()));
 const testArray = [1, 2, 3, 4, "five"];
 const testSet = new Set(testArray);
-console.log(SetSchema.check<NumberStringSet>(testSet)); // Output: true
+console.log(SetSchema.validate<NumberStringSet>(testSet)); // Output: true
 ```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Map</h3>
-
+### Map
 ```typescript
 // Single type allowed for map key,
 // array of types for map values:
-const MapSchema = new Schema(Schema.map(
+const MapSchema = Schema.map(
     Schema.string(),
     [Schema.number(), Schema.string()]
-));
+);
 
 const testArray: Array<[string, number | string]> = [
     ["key1", 1],
     ["key2", "string"]
 ];
 const testMap = new Map(testArray);
-console.log(MapSchema.check(testMap)); // Output: true
+console.log(MapSchema.validate(testMap)); // Output: true
 
 
 // Single type allowed for map key,
 // any type allowed for map values:
-const MapSchema2 = new Schema(Schema.map(
+const MapSchema2 = Schema.map(
     Schema.string(),
     Schema.any()
-));
+);
 
 const testArray2: Array<[string | number, any]> = [
     ["key1", new Date()],
     ["key2", undefined]
 ];
 const testMap2 = new Map(testArray2);
-console.log(MapSchema2.check(testMap2)); // Output: true
+console.log(MapSchema2.validate(testMap2)); // Output: true
 ```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Object Prototype</h3>
-
+### Object Prototype
 ```typescript
-const ObjectSchema = new Schema({
+const ObjectSchema = Schema.create({
     properties: {
         map: Schema.objectPrototype(Map)
     }
@@ -262,20 +283,19 @@ const ObjectSchema = new Schema({
 
 const array: Array<[string, number]> = [["abc", 123]];
 
-console.log(ObjectSchema.check({
+console.log(ObjectSchema.validate({
     map: new Map(array)
 })); // Output: true
 
-console.log(ObjectSchema.check({
+console.log(ObjectSchema.validate({
     map: new Set(array)
 })); // Output: false
 
-console.log(ObjectSchema.check({
+console.log(ObjectSchema.validate({
     map: array
 })); // Output: false
 ```
-<h3 style="margin-bottom: 6px; padding-bottom: 0px;">Array from Map</h3>
-
+### Array from Map
 ```typescript
 // TypeScript type
 type Person = {
@@ -285,15 +305,15 @@ type Person = {
 type PeopleMap = Map<number, Person>;
 type PeopleMapAsArray = Array<[number, Person]>;
 
-const PersonSchema = new Schema({
+const PersonSchema = Schema.create({
     properties: {
         firstName: Schema.string(),
         lastName: Schema.string()
     }
 });
-const PeopleMapArraySchema = new Schema(Schema.arrayFromMap("number", PersonSchema));
+const PeopleMapArraySchema = Schema.arrayFromMap("number", PersonSchema);
 // Or use Schema.array(Schema.tuple()):
-// const PeopleMapArraySchema = new Schema(Schema.array(Schema.tuple("number", PersonSchema)));
+// const PeopleMapArraySchema = Schema.array(Schema.tuple("number", PersonSchema));
 
 const peopleFromId: PeopleMap = new Map();
 peopleFromId.set(0, {
@@ -321,7 +341,7 @@ function retrieveDataFromString(): PeopleMap | undefined {
     const mapAsString = storedData;
     try {
         const arrayFromMap = JSON.parse(mapAsString);       
-        if (!PeopleMapArraySchema.check<PeopleMapAsArray>(arrayFromMap)) return undefined;
+        if (!PeopleMapArraySchema.validate<PeopleMapAsArray>(arrayFromMap)) return undefined;
 
         const peopleFromId = new Map(arrayFromMap);
         return peopleFromId;

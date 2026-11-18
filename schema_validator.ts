@@ -1,247 +1,422 @@
-type CustomType = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | MapSchema | SetSchema | PrototypeSchema | SchemaPropertyExtended;
-type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "function" | "object" | "any";
+type SchemaSource = PrimitiveType | Schema | ObjectSchema | ArraySchema | TupleSchema | MapSchema | SetSchema | PrototypeSchema | SchemaExtended | ExpressionFunction;
+type PrimitiveType = "string" | "number" | "boolean" | "undefined" | "null" | "object" | "any" | "none" | "expression";
+type Vector3 = { x: number; y: number; z: number };
+type Vector2 = { x: number; y: number };
+type VectorXZ = { x: number; z: number };
 
-interface SchemaProperty {
-    require?: boolean;
-    propertyType: CustomType | Array<CustomType>;
+export interface SchemaExtended<Type = any> {
+    require: boolean;
+    source: SchemaSource | Array<SchemaSource>;
+    [DEFAULT_VALUE_KEY]: Type;
+    optional: () => SchemaExtended<Type>;
+    default: (defaultValue: Type) => SchemaExtended<Type>;
+    validate: ValidateFunction;
 };
-interface SchemaPropertyExtended extends SchemaProperty {
-    optional: () => SchemaPropertyExtended;
-};
+
+type SchemaSourceValue<Source extends SchemaSource> =
+    Source extends "string" ? string :
+    Source extends "number" ? number :
+    Source extends "boolean" ? boolean :
+    Source extends "undefined" ? undefined :
+    Source extends "null" ? null :
+    Source extends "object" ? object :
+    Source extends "any" ? any :
+    Source extends "none" ? never :
+    Source extends "expression" ? Function :
+    Source extends ObjectSchema ? {
+        [key in keyof Source["properties"]]: Source["properties"][key] extends SchemaExtended
+        ? Source["properties"][key][typeof DEFAULT_VALUE_KEY]
+        : never
+    } :
+    any;
+type SchemaValue<Schema extends SchemaExtended> =
+    Schema[typeof DEFAULT_VALUE_KEY];
+
+
+
 type Class<T> = new (...args: any[]) => T
 type PrototypeSchema = {
     objectPrototype: Class<Object>
 };
 type ArraySchema = {
-    arrayOf: CustomType | Array<CustomType>;
+    arrayOf: SchemaSource | Array<SchemaSource>;
 };
 type TupleSchema = {
-    tupleOf: Array<CustomType | Array<CustomType>>;
+    tupleOf: Array<SchemaSource | Array<SchemaSource>>;
 };
 type MapSchema = {
     mapOf: TupleSchema;
 };
 type SetSchema = {
-    setOf: CustomType | Array<CustomType>;
+    setOf: SchemaSource | Array<SchemaSource>;
 };
-type SchemaOptions = {
+type ObjectSchemaOptions = {
     allowPartial: boolean;
     allowExtensions: boolean;
 };
 type ObjectSchema = {
-    options?: Partial<SchemaOptions>,
+    options?: Partial<ObjectSchemaOptions>,
     properties: {
-        [key: string]: SchemaProperty | Schema;
+        [key: string]: SchemaExtended | Array<SchemaExtended> | Schema | Array<Schema>;
     }
 };
 
-type ValidatorFunction = (unknownVariable: unknown) => boolean;
+type ValidateFunction = <T>(unknownVariable: unknown) => unknownVariable is T;
+type ExpressionFunction = (unknownVariable: unknown, object: Record<string | number, any>, propertyKey: string | number) => boolean;
+type ValidatorFunction = (unknownVariable: unknown, object?: Record<string | number, any>, propertyKey?: string | number) => boolean;
 
-const PROPERTY_DEFAULTS: SchemaOptions = {
+
+const PROPERTY_DEFAULTS: ObjectSchemaOptions = {
     allowPartial: false,
     allowExtensions: false
 };
 
-export class Schema {
-    public optional: () => SchemaProperty;
-    check: <T>(unknownVariable: unknown) => unknownVariable is T;
+export const DEFAULT_VALUE_KEY = Symbol();
+const DEFAULT_VALUE_PLACEHOLDER = Symbol();
+const DELETE_SYMBOL = Symbol();
 
-    constructor(schemaSource: ObjectSchema | ArraySchema | TupleSchema | SchemaPropertyExtended) {
-        // Allow schema to be used as a type:
-        this.optional = () => {
-            return {
-                require: false,
-                propertyType: this
-            };
+export class Schema<Type = any> {
+    public static debug = false;
+
+    optional?: () => SchemaExtended<Type>;
+    default?: (defaultValue: Type) => SchemaExtended<Type>;
+    validate?: ValidateFunction;
+
+
+    public static KEYWORD = {
+        delete: DELETE_SYMBOL
+    };
+
+    private static getExtendedSchema(thisSchema: Schema, validator: ValidateFunction): SchemaExtended {
+        // All methods present on the schema returned via .optional or .default
+        const schemaExtended: SchemaExtended = {
+            require: true,
+            source: thisSchema,
+            [DEFAULT_VALUE_KEY]: DEFAULT_VALUE_PLACEHOLDER,
+            optional: function () {
+                // Optional and default variables are for schemas used within other schemas, remove the validate method
+                // this.validate = undefined as unknown as ValidateFunction;
+                const schemaPropertyClone = { ...this };
+                schemaPropertyClone.require = false;
+                return schemaPropertyClone as unknown as SchemaExtended;
+            },
+            default: function (defaultValue: any) {
+                // Optional and default variables are for schemas used within other schemas, remove the validate method
+                // this.validate = undefined as unknown as ValidateFunction;
+                const schemaPropertyClone = { ...this };
+                schemaPropertyClone[DEFAULT_VALUE_KEY] = defaultValue;
+                return schemaPropertyClone as unknown as SchemaExtended;
+            },
+            validate: validator
+        };
+        return schemaExtended;
+    }
+
+    public static create<Source extends SchemaSource>(
+        source: Source
+    ): SchemaExtended<SchemaSourceValue<Source>>;
+
+    public static create<
+        Schemas extends SchemaExtended<any>[]
+    >(...schemas: Schemas): SchemaExtended<
+        SchemaValue<Schemas[number]>
+    >;
+
+    public static create<
+        Schemas extends SchemaExtended[]
+    >(...args: Schemas): SchemaExtended<
+        SchemaValue<Schemas[number]>
+    > {
+        const schema = {} as Schema;
+        const validator = (args.length === 1 ?
+            Util.getValidator(args[0]) :
+            Util.getValidator(args.map((source) => Schema.create(source)))
+        ) as ValidateFunction;
+        const schemaExtended = Schema.getExtendedSchema(schema, validator);
+
+        for (const schemaSource of args) {
+            if (schemaSource as unknown === "none") {
+                schemaExtended.require = false;
+                break;
+            }
         }
 
-        const validator = Util.getValidator(schemaSource);
-        this.check = <T>(unknownVariable: unknown): unknownVariable is T => validator(unknownVariable);
+        return schemaExtended;
     }
+    public static union = this.create;
 
-    private static extendSchemaProperty(customType: CustomType): SchemaPropertyExtended {
-        const propertyType: SchemaPropertyExtended = {
-            require: true,
-            propertyType: customType,
-            optional: function () { this.require = false; return propertyType; }
-        };
-        return propertyType;
-    }
+    public static any() { return Schema.create("any") };
+    public static none() { return Schema.create("none") };
+    public static remove() { return Schema.create("none").default(Schema.KEYWORD.delete as never) };
+    public static expression<SchemaSource>(expressionFunction: ExpressionFunction): SchemaExtended<SchemaSource> { return Schema.create(expressionFunction) }
 
-    public static string() {
-        return this.extendSchemaProperty("string");
-    }
+    // Primitive
+    public static string(): SchemaExtended<string> { return Schema.create("string") };
+    public static number(): SchemaExtended<number> { return Schema.create("number") };
+    public static boolean(): SchemaExtended<boolean> { return Schema.create("boolean") };
+    public static undefined(): SchemaExtended<undefined> { return Schema.create("undefined") };
+    public static null(): SchemaExtended<null> { return Schema.create("null") };
 
-    public static number() {
-        return this.extendSchemaProperty("number");
-    }
-
-    public static boolean() {
-        return this.extendSchemaProperty("boolean");
-    }
-
-    public static undefined() {
-        return this.extendSchemaProperty("undefined");
-    }
-
-    public static null() {
-        return this.extendSchemaProperty("null");
-    }
-
-    public static function() {
-        return this.extendSchemaProperty("function");
-    }
-
-    public static any() {
-        return this.extendSchemaProperty("any");
-    }
-
+    // Non-primitive
     public static objectPrototype(object: PrototypeSchema["objectPrototype"]) {
-        return this.extendSchemaProperty({ objectPrototype: object });
+        return Schema.create({ objectPrototype: object });
     }
 
-    public static arrayFromMap(keyType: CustomType, propertyType: CustomType | Array<CustomType>) {
-        return this.extendSchemaProperty({
+    public static array(schema: SchemaSource) {
+        return Schema.create({ arrayOf: schema });
+    }
+
+    public static arrayFromMap(keyType: SchemaSource, propertyType: SchemaSource | Array<SchemaSource>) {
+        return Schema.create({
             arrayOf: {
                 tupleOf: [keyType, propertyType]
             }
         });
     }
 
-    public static array(...args: Array<CustomType>) {
-        if (args.length === 1) {
-            return this.extendSchemaProperty({ arrayOf: args[0] });
-        } else {
-            return this.extendSchemaProperty({ arrayOf: args });
-        }
+    public static tuple(...args: Array<SchemaSource | Array<SchemaSource>>) {
+        return Schema.create({ tupleOf: args });
     }
 
-    public static tuple(...args: Array<CustomType | Array<CustomType>>) {
-        return this.extendSchemaProperty({ tupleOf: args });
-    }
-
-    public static map(keyType: CustomType | Array<CustomType>, propertyType: CustomType | Array<CustomType>) {
-        return this.extendSchemaProperty({
+    public static map(keyType: SchemaSource | Array<SchemaSource>, propertyType: SchemaSource | Array<SchemaSource>) {
+        return Schema.create({
             mapOf: {
                 tupleOf: [keyType, propertyType]
             }
         });
     }
 
-    public static set(...args: Array<CustomType>) {
+    public static set(...args: Array<SchemaSource>) {
         if (args.length === 1) {
-            return this.extendSchemaProperty({ setOf: args[0] });
+            return Schema.create({ setOf: args[0] });
         } else {
-            return this.extendSchemaProperty({ setOf: args });
+            return Schema.create({ setOf: args });
         }
+    }
+
+    public static Vector3(): SchemaExtended<Vector3> {
+        return Schema.create({
+            properties: {
+                x: Schema.number(),
+                y: Schema.number(),
+                z: Schema.number()
+            }
+        });
+    }
+    public static Vector2(): SchemaExtended<Vector2> {
+        return Schema.create({
+            properties: {
+                x: Schema.number(),
+                y: Schema.number()
+            }
+        });
+    }
+    public static VectorXZ(): SchemaExtended<VectorXZ> {
+        return Schema.create({
+            properties: {
+                x: Schema.number(),
+                z: Schema.number()
+            }
+        });
     }
 }
 
 const Util = {
-    isPrimitive: (customType: CustomType): customType is PrimitiveType => {
-        return (typeof customType === "string");
+    printDebug: (message: string, failed?: boolean) => {
+        if (!Schema.debug) return;
+        console.log(`${failed ? "Invalid: " : ""} ${message}`);
     },
-    isArraySchema: (customType: CustomType): customType is ArraySchema => {
-        if (typeof customType === "string") return false;
-        return "arrayOf" in customType;
+    deepClone: (unknownVariable: any): typeof unknownVariable => {
+        const visited = new WeakMap();
+        return _deepClone(unknownVariable);
+        function _deepClone(unknownVariable: any): typeof unknownVariable {
+            if (typeof unknownVariable !== "object" || unknownVariable === null) return unknownVariable;
+            if (typeof unknownVariable === "function") return unknownVariable;
+
+            if (visited.has(unknownVariable)) return visited.get(unknownVariable);
+
+            const clone = new unknownVariable.constructor();
+            visited.set(unknownVariable, clone);
+            let propertyArray: Array<any> | Set<any> | undefined;
+
+            let setNewValue: Function;
+            if (unknownVariable instanceof Set) {
+                setNewValue = (propertyKey: keyof typeof clone, value: any) => {
+                    clone.add(_deepClone(value));
+                }
+            } else if (unknownVariable instanceof Map) {
+                setNewValue = (propertyKey: keyof typeof clone, value: any) => {
+                    clone.set(propertyKey, _deepClone(value));
+                }
+            } else {
+                setNewValue = (propertyKey: keyof typeof clone, value: any) => {
+                    clone[propertyKey] = _deepClone(value);
+                }
+            }
+
+            if (Array.isArray(unknownVariable) || unknownVariable instanceof Set) {
+                propertyArray = unknownVariable;
+                let index = 0;
+                for (const entry of propertyArray) {
+                    const value = entry;
+                    setNewValue(index, value);
+                    index++;
+                }
+            } else {
+                if (!(Symbol.iterator in unknownVariable)) {
+                    propertyArray = Object.entries(unknownVariable);
+                } else {
+                    const iterator = unknownVariable[Symbol.iterator];
+                    if (typeof iterator !== "function") {
+                        // Property array will be undefined:
+                        clone[Symbol.iterator] = _deepClone(iterator);
+                    } else if (!("toArray" in iterator)) {
+                        propertyArray = unknownVariable as any;
+                    } else {
+                        propertyArray = iterator().toArray();
+                    }
+                }
+                if (propertyArray !== undefined) {
+                    for (const [...entry] of propertyArray) {
+                        const propertyKey = entry[0];
+                        const value = entry[1];
+                        setNewValue(propertyKey, value);
+                    }
+                }
+            }
+            return clone;
+        }
     },
-    isTupleSchema: (customType: CustomType): customType is TupleSchema => {
-        if (typeof customType === "string") return false;
-        return "tupleOf" in customType;
+    isPrimitive: (schemaSource: SchemaSource): schemaSource is PrimitiveType => {
+        return (typeof schemaSource === "string");
     },
-    isMapSchema: (customType: CustomType): customType is MapSchema => {
-        if (typeof customType === "string") return false;
-        return "mapOf" in customType;
+    isArraySchema: (schemaSource: SchemaSource): schemaSource is ArraySchema => {
+        if (typeof schemaSource === "string") return false;
+        return "arrayOf" in schemaSource;
     },
-    isSetSchema: (customType: CustomType): customType is SetSchema => {
-        if (typeof customType === "string") return false;
-        return "setOf" in customType;
+    isTupleSchema: (schemaSource: SchemaSource): schemaSource is TupleSchema => {
+        if (typeof schemaSource === "string") return false;
+        return "tupleOf" in schemaSource;
     },
-    isObjectSchema: (customType: CustomType): customType is ObjectSchema => {
-        if (typeof customType === "string") return false;
-        return "properties" in customType;
+    isMapSchema: (schemaSource: SchemaSource): schemaSource is MapSchema => {
+        if (typeof schemaSource === "string") return false;
+        return "mapOf" in schemaSource;
     },
-    isPrototypeSchema: (customType: CustomType): customType is PrototypeSchema => {
-        if (typeof customType === "string") return false;
-        return "objectPrototype" in customType;
+    isSetSchema: (schemaSource: SchemaSource): schemaSource is SetSchema => {
+        if (typeof schemaSource === "string") return false;
+        return "setOf" in schemaSource;
     },
-    isSchemaProperty: (customType: CustomType): customType is SchemaPropertyExtended => {
-        if (typeof customType === "string") return false;
-        return "propertyType" in customType;
+    isObjectSchema: (schemaSource: SchemaSource): schemaSource is ObjectSchema => {
+        if (typeof schemaSource === "string") return false;
+        return "properties" in schemaSource;
     },
-    primitiveValidator: (unknownVariable: unknown, primitiveType: PrimitiveType): boolean => {
-        if (primitiveType === "null") return (unknownVariable === null);
-        return (typeof unknownVariable === primitiveType);
+    isPrototypeSchema: (schemaSource: SchemaSource): schemaSource is PrototypeSchema => {
+        if (typeof schemaSource === "string") return false;
+        return "objectPrototype" in schemaSource;
     },
-    getOptions: (objectSchema: ObjectSchema): SchemaOptions => {
+    isSchemaExtended: (schemaSource: SchemaSource): schemaSource is SchemaExtended => {
+        if (typeof schemaSource === "string") return false;
+        return "source" in schemaSource;
+    },
+    getOptions: (objectSchema: ObjectSchema): ObjectSchemaOptions => {
         const options = objectSchema.options;
         if (options === undefined) {
             return PROPERTY_DEFAULTS;
         } else {
-            options.allowPartial = options.allowPartial ?? PROPERTY_DEFAULTS.allowPartial;
-            options.allowExtensions = options.allowExtensions ?? PROPERTY_DEFAULTS.allowExtensions;
+            return Object.assign({}, PROPERTY_DEFAULTS, options);
         }
-        return options as SchemaOptions;
     },
-    getMultiTypeValidator: (customTypeArray: Array<CustomType>): ValidatorFunction => {
+    getMultiTypeValidator: (schemaSourceArray: Array<SchemaSource>): ValidatorFunction => {
         const validators: Array<ValidatorFunction> = [];
-        for (const singleCustomType of customTypeArray) {
-            validators.push(Util.getValidator(singleCustomType));
+        for (const singleSchemaSource of schemaSourceArray) {
+            validators.push(Util.getValidator(singleSchemaSource));
         }
+        if (validators.length === 0) return () => false;
+        if (validators.length === 1) return validators[0];
         return (unknownVariable) => {
-            let isValid = false;
             for (const validator of validators) {
                 if (!validator(unknownVariable)) continue;
-                isValid = true;
-                break;
+                return true;
             }
-            return isValid;
+            return false;
         }
     },
-    getValidator: (customType: CustomType | Array<CustomType>): ValidatorFunction => {
-        if (Array.isArray(customType)) {
-            return Util.getMultiTypeValidator(customType);
+    getValidator: (schemaSource: SchemaSource | Array<SchemaSource>): ValidatorFunction => {
+        if (Array.isArray(schemaSource)) {
+            return Util.getMultiTypeValidator(schemaSource);
         }
 
-        if (Util.isPrimitive(customType)) {
-            if (customType !== "any") {
-                const validator = Util.primitiveValidator;
-                return (unknownVariable) => validator(unknownVariable, customType);
-            } else {
-                return () => true;
+        if (Util.isPrimitive(schemaSource)) {
+            switch (schemaSource) {
+                case "any":
+                    return () => true;
+                case "none":
+                    return () => false;
+                default:
+                    const validator = Util.primitiveValidator;
+                    return (unknownVariable) => validator(unknownVariable, schemaSource);
             }
         }
 
         let validator: ValidatorFunction;
-        if (customType instanceof Schema) {
-            validator = customType.check;
-        } else if (Util.isSchemaProperty(customType)) {
-            const validator = Util.getValidator(customType.propertyType);
-            return (unknownVariable) => validator(unknownVariable);
-        } else if (Util.isArraySchema(customType)) {
-            validator = Util.getArrayValidator(customType);
-        } else if (Util.isTupleSchema(customType)) {
-            validator = Util.getTupleValidator(customType);
-        } else if (Util.isMapSchema(customType)) {
-            validator = Util.getMapValidator(customType);
-        } else if (Util.isSetSchema(customType)) {
-            validator = Util.getSetValidator(customType);
-        } else if (Util.isObjectSchema(customType)) {
-            validator = Util.getObjectValidator(customType);
-        } else if (Util.isPrototypeSchema(customType)) {
-            validator = Util.getPrototypeValidator(customType);
+        if (typeof schemaSource === "function") {
+            validator = schemaSource as ValidatorFunction;
+        } else if (Util.isSchemaExtended(schemaSource)) {
+            validator = schemaSource.validate;
+            // return (unknownVariable) => validator(unknownVariable);
+        } else if (Util.isArraySchema(schemaSource)) {
+            validator = Util.getArrayValidator(schemaSource);
+        } else if (Util.isTupleSchema(schemaSource)) {
+            validator = Util.getTupleValidator(schemaSource);
+        } else if (Util.isMapSchema(schemaSource)) {
+            validator = Util.getMapValidator(schemaSource);
+        } else if (Util.isSetSchema(schemaSource)) {
+            validator = Util.getSetValidator(schemaSource);
+        } else if (Util.isObjectSchema(schemaSource)) {
+            validator = Util.getObjectValidator(schemaSource);
+        } else if (Util.isPrototypeSchema(schemaSource)) {
+            validator = Util.getPrototypeValidator(schemaSource);
         } else {
             throw new Error("Could not get validator function");
         }
         return validator;
     },
+    primitiveValidator: (unknownVariable: unknown, primitiveType: PrimitiveType): boolean => {
+        if (primitiveType === "null") return (unknownVariable === null);
+        return (typeof unknownVariable === primitiveType);
+    },
     getArrayValidator: (arraySchema: ArraySchema): ValidatorFunction => {
         const arrayOf = arraySchema.arrayOf;
-        const validator = Util.getValidator(arrayOf);
+        let validator;
+        if (
+            typeof arrayOf !== "string" &&
+            DEFAULT_VALUE_KEY in arrayOf &&
+            arrayOf[DEFAULT_VALUE_KEY] !== DEFAULT_VALUE_PLACEHOLDER
+        ) {
+            const defaultValue = arrayOf[DEFAULT_VALUE_KEY];
+            const getDefaultValue = (typeof defaultValue !== "object" || defaultValue === null) ?
+                () => defaultValue :
+                () => Util.deepClone(defaultValue);
+            const assignDefaultValue = (defaultValue === DELETE_SYMBOL) ?
+                (object: Array<any>, index: number) => { object.splice(index, 1); } :
+                (object: Array<any>, index: number) => { object[index] = getDefaultValue(); }
+
+            const entryValidator = Util.getValidator(arrayOf);
+
+            validator = ((unknownVariable: unknown, object: Array<any>, index: number) => {
+                const isValid = entryValidator(unknownVariable);
+                if (isValid) return true;
+                assignDefaultValue(object, index);
+                return true;
+            }) as ValidatorFunction;
+        } else {
+            validator = Util.getValidator(arrayOf);
+        }
+
         return (unknownVariable) => {
             if (!Array.isArray(unknownVariable)) return false;
-            for (const unknownValue of unknownVariable) {
-                if (!validator(unknownValue)) return false;
+            for (let i = unknownVariable.length - 1; i >= 0; i--) {
+                if (!validator(unknownVariable[i], unknownVariable, i)) return false;
             }
             return true;
         }
@@ -255,11 +430,35 @@ const Util = {
         let lastOptionalVariableIndex = tupleOf.length;
 
         for (let i = tupleOf.length - 1; i >= 0; i--) {
-            const customType = tupleOf[i];
-            validators.unshift(Util.getValidator(customType));
-            if (typeof customType === "string") continue;
-            if (!("require" in customType)) continue;
-            if (customType.require !== false) continue;
+            const schemaSource = tupleOf[i];
+            const validator = Util.getValidator(schemaSource);
+            if (typeof schemaSource === "string") {
+                validators.unshift(validator);
+                continue;
+            }
+            if (!(DEFAULT_VALUE_KEY in schemaSource) || schemaSource[DEFAULT_VALUE_KEY] === DEFAULT_VALUE_PLACEHOLDER) {
+                validators.unshift(validator);
+            } else {
+                const defaultValue = schemaSource[DEFAULT_VALUE_KEY];
+                const getDefaultValue = (typeof defaultValue !== "object" || defaultValue === null) ?
+                    () => defaultValue :
+                    () => Util.deepClone(defaultValue);
+                const assignDefaultValue = (defaultValue === DELETE_SYMBOL) ?
+                    (object: any, propertyKey: keyof typeof object) => { delete object[propertyKey]; } :
+                    (object: any, propertyKey: keyof typeof object) => { object[propertyKey] = getDefaultValue(); }
+
+                const newValidator = ((unknownVariable: unknown, object: Array<any>, propertyKey: string | number) => {
+                    const isValid = validator(unknownVariable);
+                    if (isValid) return true;
+                    assignDefaultValue(object, propertyKey);
+                    return true;
+                }) as ValidatorFunction;
+
+                validators.unshift(newValidator);
+            }
+
+            if (!("require" in schemaSource)) continue;
+            if (schemaSource.require !== false) continue;
             allPropertiesRequired = false;
             if (lastOptionalVariableIndex - i > 1) throw new Error("Failed to create tuple - optional variables must be placed after required variables");
             lastOptionalVariableIndex = i;
@@ -271,14 +470,13 @@ const Util = {
             if (allPropertiesRequired && unknownVariableLength !== length) return false;
             else if (unknownVariableLength < lastOptionalVariableIndex) return false;
 
-            // Use the length property here so the JS engine can optimise and avoid the array bounds check each loop:
             for (let i = 0; i < unknownVariable.length; i++) {
                 const validator = validators[i];
                 if (i >= lastOptionalVariableIndex && i >= unknownVariableLength) {
                     // All variables from now on are optional, and none are present
                     return true;
                 }
-                if (!validator(unknownVariable[i])) return false;
+                if (!validator(unknownVariable[i], unknownVariable, i)) return false;
             }
             return true;
         }
@@ -316,42 +514,69 @@ const Util = {
         let allPropertiesRequired = !allowPartial;
 
         for (const subArray of Object.entries(properties)) {
-            const schemaProperty = subArray[1];
-            let require: boolean;
-            let validator: ValidatorFunction;
-            if (schemaProperty instanceof Schema) {
-                validator = schemaProperty.check;
-                require = true;
+            const propertySchema = subArray[1];
+            const validator = Util.getValidator(propertySchema);
+            const require = (("require" in propertySchema && !propertySchema.require) ? false : true);
+            if (!require) allPropertiesRequired = false;
+            if (!(DEFAULT_VALUE_KEY in propertySchema) || propertySchema[DEFAULT_VALUE_KEY] === DEFAULT_VALUE_PLACEHOLDER) {
+                propertyValidatorSubArrays.push([subArray[0], validator, require]);
+                continue;
             } else {
-                validator = Util.getValidator(schemaProperty.propertyType);
-                require = schemaProperty.require ?? true;
-                if (!require) allPropertiesRequired = false;
+                const defaultValue = propertySchema[DEFAULT_VALUE_KEY];
+                const getDefaultValue = (typeof defaultValue !== "object" || defaultValue === null) ?
+                    () => defaultValue :
+                    () => Util.deepClone(defaultValue);
+                const assignDefaultValue = (defaultValue === DELETE_SYMBOL) ?
+                    (object: any, propertyKey: keyof typeof object) => { delete object[propertyKey]; } :
+                    (object: any, propertyKey: keyof typeof object) => { object[propertyKey] = getDefaultValue(); }
+
+                const newValidator = ((unknownVariable: unknown, object: Record<string | number, any>, propertyKey: string | number) => {
+                    const isValid = validator(unknownVariable);
+                    if (isValid) return true;
+                    assignDefaultValue(object, propertyKey);
+                    return true;
+                }) as ValidatorFunction;
+                propertyValidatorSubArrays.push([subArray[0], newValidator, require]);
             }
-            propertyValidatorSubArrays.push([subArray[0], validator, require]);
         }
 
         return (unknownVariable) => {
-            if (typeof unknownVariable !== "object" || unknownVariable === null) return false;
+            if (typeof unknownVariable !== "object" || unknownVariable === null) {
+                Util.printDebug("Variable is not an object", true);
+                return false;
+            }
 
             let allPropertiesPresent = true;
             for (const subArray of propertyValidatorSubArrays) {
                 const [propertyKey, validator, require] = subArray;
                 // Object does not contain key: 
                 if (!(propertyKey in unknownVariable)) {
-                    if (require === true && !allowPartial) return false;
+                    if (require === true && !allowPartial) {
+                        if (!(validator(Symbol(), unknownVariable, propertyKey))) {
+                            Util.printDebug("Required property is not present, could not assign default value", true);
+                            return false;
+                        }
+                    }
                     allPropertiesPresent = false;
                     continue;
                 }
                 // Object contains key, validate property
                 const unknownValue = unknownVariable[(propertyKey as keyof typeof unknownVariable)];
-                if (!(validator(unknownValue))) return false;
+                if (!(validator(unknownValue, unknownVariable, propertyKey))) {
+                    Util.printDebug(`Property "${propertyKey}" is invalid: (${unknownValue})`, true);
+                    return false;
+                }
             }
 
             // Don't need to verify no extra properties exist:
             if (allowExtensions) return true;
 
             // All properties already validated
-            if (allPropertiesRequired || allPropertiesPresent) return (Object.keys(unknownVariable).length === propertyKeySet.size);
+            if (allPropertiesRequired && allPropertiesPresent) {
+                const lengthMatches = (Object.keys(unknownVariable).length === propertyKeySet.size);
+                if (!lengthMatches) Util.printDebug(`All properties required are required and all properties are present - object key count is different`, true);
+                return lengthMatches;
+            }
 
             // Check for extra properties
             for (const key of Object.keys(unknownVariable)) {
