@@ -148,7 +148,7 @@ export class Schema<Type = any> {
     public static any() { return Schema.create("any") };
     public static none() { return Schema.create("none") };
     public static remove() { return Schema.create("none").default(Schema.KEYWORD.delete as never) };
-    public static expression(expressionFunction: ExpressionFunction) { return Schema.create(expressionFunction) }
+    public static expression<SchemaSource>(expressionFunction: ExpressionFunction): SchemaExtended<SchemaSource> { return Schema.create(expressionFunction) }
 
     // Primitive
     public static string(): SchemaExtended<string> { return Schema.create("string") };
