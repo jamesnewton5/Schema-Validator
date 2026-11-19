@@ -1,1 +1,1 @@
-export { Schema, DEFAULT_VALUE_KEY, SchemaExtended } from "./schema_validator";
+export { Schema, DEFAULT_VALUE_KEY, SchemaExtended, SchemaValue, SchemaProperties, ExtractTypeFromProperties } from "./schema_validator.js";

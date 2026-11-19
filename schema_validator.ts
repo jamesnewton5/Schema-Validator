@@ -29,10 +29,17 @@ type SchemaSourceValue<Source extends SchemaSource> =
         : never
     } :
     any;
-type SchemaValue<Schema extends SchemaExtended> =
+
+export type SchemaValue<Schema extends SchemaExtended> =
     Schema[typeof DEFAULT_VALUE_KEY];
 
+export type SchemaProperties = {
+    [Key: string]: SchemaExtended
+};
 
+export type ExtractTypeFromProperties<T extends SchemaProperties> = {
+    [Key in keyof T]: SchemaValue<T[Key]>
+};
 
 type Class<T> = new (...args: any[]) => T
 type PrototypeSchema = {
@@ -552,8 +559,8 @@ const Util = {
                 // Object does not contain key: 
                 if (!(propertyKey in unknownVariable)) {
                     if (require === true && !allowPartial) {
-                        if (!(validator(Symbol(), unknownVariable, propertyKey))) {
-                            Util.printDebug("Required property is not present, could not assign default value", true);
+                        if (!(validator(undefined, unknownVariable, propertyKey))) {
+                            Util.printDebug(`Required property "${String(propertyKey)}" is not present, could not assign default value`, true);
                             return false;
                         }
                     }
