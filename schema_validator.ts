@@ -165,6 +165,10 @@ export class Schema<Type = any> {
     public static null(): SchemaExtended<null> { return Schema.create("null") };
 
     // Non-primitive
+    public static stringEnum<T extends Record<string, string>>(source: T): SchemaExtended<T[keyof T]> { return Schema.expression((value) => typeof value === "string" && Object.values(source).includes(value as any)) }
+    public static numericEnum<T extends Record<string, number>>(source: T): SchemaExtended<T[keyof T]> { return Schema.expression((value) => typeof value === "number" && Object.values(source).includes(value as any)) }
+    public static enum<T extends Record<string, string | number>>(source: T): SchemaExtended<T[keyof T]> { return Schema.expression((value) => typeof value === "number" && Object.values(source).includes(value as any)) }
+
     public static objectPrototype(object: PrototypeSchema["objectPrototype"]) {
         return Schema.create({ objectPrototype: object });
     }
