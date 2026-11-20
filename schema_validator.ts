@@ -8,7 +8,7 @@ export interface SchemaExtended<Type = any> {
     require: boolean;
     source: SchemaSource | Array<SchemaSource>;
     [DEFAULT_VALUE_KEY]: Type;
-    optional: () => SchemaExtended<Type>;
+    optional: () => SchemaExtended<Type | undefined>;
     default: (defaultValue: Type) => SchemaExtended<Type>;
     validate: ValidateFunction;
 };
@@ -28,7 +28,16 @@ type SchemaSourceValue<Source extends SchemaSource> =
         ? Source["properties"][key][typeof DEFAULT_VALUE_KEY]
         : never
     } :
-    any;
+    Source extends ArraySchema ? Array<
+        Source["arrayOf"] extends SchemaSource
+        ? SchemaSourceValue<Source["arrayOf"]>
+        : Source["arrayOf"] extends SchemaSource[]
+        ? SchemaSourceValue<Source["arrayOf"][number]>
+        : never
+    > :
+    Source extends SchemaExtended
+    ? SchemaValue<Source>
+    : any;
 
 export type SchemaValue<Schema extends SchemaExtended> =
     Schema[typeof DEFAULT_VALUE_KEY];
@@ -84,8 +93,12 @@ const DELETE_SYMBOL = Symbol();
 
 export class Schema<Type = any> {
     public static debug = false;
+    /** Requires `debug` to be enabled */
+    public static logger: (message: string, failed?: boolean) => void = (message: string, failed?: boolean) => {
+        console.log(`${failed ? "Invalid: " : ""} ${message}`);
+    }
 
-    optional?: () => SchemaExtended<Type>;
+    optional?: () => SchemaExtended<Type | undefined>;
     default?: (defaultValue: Type) => SchemaExtended<Type>;
     validate?: ValidateFunction;
 
@@ -173,8 +186,8 @@ export class Schema<Type = any> {
         return Schema.create({ objectPrototype: object });
     }
 
-    public static array(schema: SchemaSource) {
-        return Schema.create({ arrayOf: schema });
+    public static array<T extends SchemaSource>(schema: T): SchemaExtended<SchemaSourceValue<T>[]> {
+        return Schema.create({ arrayOf: schema }) as SchemaExtended<SchemaSourceValue<T>[]>;
     }
 
     public static arrayFromMap(keyType: SchemaSource, propertyType: SchemaSource | Array<SchemaSource>) {
@@ -235,7 +248,7 @@ export class Schema<Type = any> {
 const Util = {
     printDebug: (message: string, failed?: boolean) => {
         if (!Schema.debug) return;
-        console.log(`${failed ? "Invalid: " : ""} ${message}`);
+        Schema.logger(message, failed);
     },
     deepClone: (unknownVariable: any): typeof unknownVariable => {
         const visited = new WeakMap();
