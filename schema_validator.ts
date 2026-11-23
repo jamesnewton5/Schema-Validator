@@ -20,8 +20,8 @@ type SchemaSourceValue<Source extends SchemaSource> =
     Source extends "undefined" ? undefined :
     Source extends "null" ? null :
     Source extends "object" ? object :
+    Source extends "none" ? undefined :
     Source extends "any" ? any :
-    Source extends "none" ? never :
     Source extends "expression" ? Function :
     Source extends ObjectSchema ? {
         [key in keyof Source["properties"]]: Source["properties"][key] extends SchemaExtended
@@ -47,7 +47,7 @@ export type SchemaProperties = {
 };
 
 export type ExtractTypeFromProperties<T extends SchemaProperties> = {
-    [Key in keyof T]: SchemaValue<T[Key]>
+    [Key in keyof T]: SchemaSourceValue<T[Key]>
 };
 
 type Class<T> = new (...args: any[]) => T
@@ -166,7 +166,7 @@ export class Schema<Type = any> {
     public static union = this.create;
 
     public static any() { return Schema.create("any") };
-    public static none() { return Schema.create("none") };
+    public static none(): SchemaExtended<undefined> { return Schema.create("none") };
     public static remove() { return Schema.create("none").default(Schema.KEYWORD.delete as never) };
     public static expression<SchemaSource>(expressionFunction: ExpressionFunction): SchemaExtended<SchemaSource> { return Schema.create(expressionFunction) }
 
@@ -187,7 +187,7 @@ export class Schema<Type = any> {
     }
 
     public static array<T extends SchemaSource>(schema: T): SchemaExtended<SchemaSourceValue<T>[]> {
-        return Schema.create({ arrayOf: schema }) as SchemaExtended<SchemaSourceValue<T>[]>;
+        return Schema.create({ arrayOf: schema }) as unknown as SchemaExtended<SchemaSourceValue<T>[]>;
     }
 
     public static arrayFromMap(keyType: SchemaSource, propertyType: SchemaSource | Array<SchemaSource>) {
