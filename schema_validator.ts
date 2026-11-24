@@ -586,7 +586,7 @@ const Util = {
                 }
                 // Object contains key, validate property
                 const unknownValue = unknownVariable[(propertyKey as keyof typeof unknownVariable)];
-                if (!(validator(unknownValue, unknownVariable, propertyKey))) {
+                if (!validator(unknownValue, unknownVariable, propertyKey) && (require && unknownValue !== undefined)) {
                     Util.printDebug(`Property "${propertyKey}" is invalid: (${unknownValue})`, true);
                     return false;
                 }
